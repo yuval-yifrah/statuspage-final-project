@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "statuspage-chart.fullname" . }}
+  labels:
+    {{- include "statuspage-chart.labels" . | nindent 4 }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "statuspage-chart.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "statuspage-chart.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          env:
+            - name: ALLOWED_HOSTS
+              value: "{{ .Values.django.allowedHosts }}"
+            - name: DEBUG
+              value: "{{ .Values.django.debug }}"
+            - name: DATABASE_HOST
+              value: "{{ .Values.django.database.host }}"
+            - name: DATABASE_NAME
+              value: "{{ .Values.django.database.name }}"
+            - name: DATABASE_PORT
+              value: "{{ .Values.django.database.port }}"
+            - name: DATABASE_USER
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "statuspage-chart.fullname" . }}-secrets
+                  key: DATABASE_USER
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "statuspage-chart.fullname" . }}-secrets
+                  key: DATABASE_PASSWORD
+            - name: REDIS_HOST
+              value: "{{ .Values.django.redis.host }}"
+            - name: REDIS_PORT
+              value: "{{ .Values.django.redis.port }}"
+            - name: REDIS_DB
+              value: "{{ .Values.django.redis.database }}"
+            - name: STATUS_PAGE_CONFIGURATION
+              value: "statuspage.settings"
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+
