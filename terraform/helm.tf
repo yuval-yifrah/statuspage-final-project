@@ -1,13 +1,13 @@
+data "aws_eks_cluster_auth" "cluster" {
+  name = aws_eks_cluster.ly_eks.name
+}
+
 provider "helm" {
-  kubernetes {
+  kubernetes = {
     host                   = aws_eks_cluster.ly_eks.endpoint
     cluster_ca_certificate = base64decode(aws_eks_cluster.ly_eks.certificate_authority[0].data)
     token                  = data.aws_eks_cluster_auth.cluster.token
   }
-}
-
-data "aws_eks_cluster_auth" "cluster" {
-  name = aws_eks_cluster.ly_eks.name
 }
 
 # התקנת CSI Driver
@@ -17,18 +17,23 @@ resource "helm_release" "csi_driver" {
   chart      = "secrets-store-csi-driver"
   namespace  = "kube-system"
 
-  set {
-    name  = "syncSecret.enabled"
-    value = "true"
-  }
+  set_sensitive = []
+  set = [
+    {
+      name  = "syncSecret.enabled"
+      value = "true"
+    }
+  ]
 }
 
-# התקנת AWS Provider ל-CSI
+
+# התקנת AWS Provider ל-CSI (מתוך Helm repo הרשמי של AWS)
 resource "helm_release" "csi_driver_provider_aws" {
   name       = "csi-secrets-store-provider-aws"
   repository = "https://aws.github.io/secrets-store-csi-driver-provider-aws"
-  chart      = "csi-secrets-store-provider-aws"
+  chart      = "secrets-store-csi-driver-provider-aws"
   namespace  = "kube-system"
+  version    = "0.3.8" # אפשר גם להוריד את השורה הזו כדי לקחת תמיד הכי עדכני
 
   depends_on = [helm_release.csi_driver]
 }
