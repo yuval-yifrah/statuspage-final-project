@@ -1,0 +1,44 @@
+replicaCount: 2
+
+image:
+  repository: 992382545251.dkr.ecr.us-east-1.amazonaws.com/ly-statuspage-repo
+  pullPolicy: Always
+  tag: "latest"
+
+service:
+  type: NodePort
+  port: 80
+  targetPort: 8000
+  nodePort: 30080
+
+django:
+  debug: false
+  allowedHosts: "*"
+  database:
+    host: ly-statuspage-rds.cx248m4we6k7.us-east-1.rds.amazonaws.com
+    name: statuspage
+    port: 5432
+  redis:
+    host: ly-statuspage-redis.7fftml.ng.0001.use1.cache.amazonaws.com
+    port: 6379
+    database: 0
+
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+secrets:
+  databaseUser: ""
+  databasePassword: ""
+
