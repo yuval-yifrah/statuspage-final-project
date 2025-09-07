@@ -38,13 +38,13 @@ spec:
             - name: DATABASE_USER
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "statuspage-chart.fullname" . }}-secrets
-                  key: DATABASE_USER
+                  name: db-secrets
+                  key: username
             - name: DATABASE_PASSWORD
               valueFrom:
                 secretKeyRef:
-                  name: {{ include "statuspage-chart.fullname" . }}-secrets
-                  key: DATABASE_PASSWORD
+                  name: db-secrets
+                  key: password
             - name: REDIS_HOST
               value: "{{ .Values.django.redis.host }}"
             - name: REDIS_PORT
@@ -67,4 +67,15 @@ spec:
             periodSeconds: 5
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+      volumes:
+        - name: secrets-store-inline
+          csi:
+            driver: secrets-store.csi.k8s.io
+            readOnly: true
+            volumeAttributes:
+              secretProviderClass: "db-secrets"
+      volumeMounts:
+        - name: secrets-store-inline
+          mountPath: "/mnt/secrets-store"
+          readOnly: true
 
