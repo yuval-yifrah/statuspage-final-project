@@ -1,4 +1,4 @@
-# main.tf - Fixed version
+# main.tf - Updated version without ALB
 terraform {
   required_version = ">= 1.5.0"
   required_providers {
@@ -9,6 +9,10 @@ terraform {
     random = {
       source  = "hashicorp/random"
       version = "~> 3.1"
+    }
+    kubectl = {
+      source  = "gavinbunney/kubectl"
+      version = ">= 1.7.0"
     }
   }
 }
@@ -35,7 +39,7 @@ data "aws_caller_identity" "current" {}
 
 # Secrets Manager - DB credentials
 data "aws_secretsmanager_secret" "db_credentials" {
-  name = "ly-statuspage-db-credentials" # זה השם שבחרת ב-Secrets Manager
+  name = "ly-statuspage-db-credentials"
 }
 
 data "aws_secretsmanager_secret_version" "db_credentials_version" {
@@ -45,7 +49,6 @@ data "aws_secretsmanager_secret_version" "db_credentials_version" {
 locals {
   db_credentials = jsondecode(data.aws_secretsmanager_secret_version.db_credentials_version.secret_string)
 }
-
 
 # VPC
 resource "aws_vpc" "ly_vpc" {
@@ -90,7 +93,8 @@ resource "aws_subnet" "ly_private_subnet" {
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = {
-  Name = "${var.prefix}${var.project_name}-private-subnet-${count.index + 1}"
+    Name = "${var.prefix}${var.project_name}-private-subnet-${count.index + 1}"
+    "kubernetes.io/role/internal-elb" = "1"
   }
 }
 
@@ -190,12 +194,7 @@ resource "aws_security_group" "eks_nodes_sg" {
     cidr_blocks = ["10.0.0.0/16"]
   }
   
-  ingress {
-    from_port       = 30080
-    to_port         = 30080
-    protocol        = "tcp"
-    security_groups = [aws_security_group.alb_sg.id]
-  }
+  # Allow all traffic between nodes
   ingress {
     from_port = 0
     to_port   = 65535
@@ -203,6 +202,7 @@ resource "aws_security_group" "eks_nodes_sg" {
     self      = true
   }
 
+  # Allow cluster to communicate with nodes
   ingress {
     from_port       = 1025
     to_port         = 65535
@@ -210,6 +210,7 @@ resource "aws_security_group" "eks_nodes_sg" {
     security_groups = [aws_security_group.eks_cluster_sg.id]
   }
 
+  # Allow NodePort services (needed for LoadBalancer services)
   ingress {
     from_port   = 30000
     to_port     = 32767
@@ -303,6 +304,30 @@ resource "aws_iam_role_policy_attachment" "eks_container_registry_policy" {
   role       = aws_iam_role.eks_nodegroup_role.name
 }
 
+# IAM policy for Secrets Manager access
+resource "aws_iam_policy" "secrets_manager_policy" {
+  name = "${var.prefix}${var.project_name}-secrets-manager-policy"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret"
+        ]
+        Resource = data.aws_secretsmanager_secret.db_credentials.arn
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "eks_secrets_manager_policy" {
+  policy_arn = aws_iam_policy.secrets_manager_policy.arn
+  role       = aws_iam_role.eks_nodegroup_role.name
+}
+
 # EKS Cluster
 resource "aws_eks_cluster" "ly_eks" {
   name     = "${var.prefix}${var.project_name}-cluster"
@@ -310,7 +335,7 @@ resource "aws_eks_cluster" "ly_eks" {
   version  = var.cluster_version
 
   vpc_config {
-    subnet_ids              = aws_subnet.ly_public_subnet[*].id
+    subnet_ids              = concat(aws_subnet.ly_public_subnet[*].id, aws_subnet.ly_private_subnet[*].id)
     endpoint_private_access = false
     endpoint_public_access  = true
   }
@@ -334,7 +359,7 @@ resource "aws_eks_node_group" "ly_nodes" {
   instance_types  = [var.node_instance_type]
 
   remote_access {
-    ec2_ssh_key = var.key_pair_name  # yuvalyhome
+    ec2_ssh_key = var.key_pair_name
     source_security_group_ids = [aws_security_group.eks_nodes_sg.id]
   }
 
@@ -352,6 +377,7 @@ resource "aws_eks_node_group" "ly_nodes" {
     aws_iam_role_policy_attachment.eks_worker_node_policy,
     aws_iam_role_policy_attachment.eks_cni_policy,
     aws_iam_role_policy_attachment.eks_container_registry_policy,
+    aws_iam_role_policy_attachment.eks_secrets_manager_policy,
   ]
 
   tags = {
@@ -472,14 +498,14 @@ resource "aws_security_group" "jenkins_sg" {
     from_port   = 8080
     to_port     = 8080
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # Restrict this to your IP in production
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # Restrict this to your IP in production
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
@@ -558,87 +584,5 @@ resource "aws_elasticache_replication_group" "ly_redis" {
 
   tags = {
     Name = "${var.prefix}${var.project_name}-redis"
-  }
-}
-
-# ALB Security Group
-resource "aws_security_group" "alb_sg" {
-  name_prefix = "${var.prefix}${var.project_name}-alb-"
-  vpc_id      = aws_vpc.ly_vpc.id
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = {
-    Name = "${var.prefix}${var.project_name}-alb-sg"
-  }
-}
-
-# Application Load Balancer
-resource "aws_lb" "ly_alb" {
-  name               = "${var.prefix}${var.project_name}-alb"
-  internal           = false
-  load_balancer_type = "application"
-  security_groups    = [aws_security_group.alb_sg.id]
-  subnets            = aws_subnet.ly_public_subnet[*].id
-
-  enable_deletion_protection = false
-
-  tags = {
-    Name = "${var.prefix}${var.project_name}-alb"
-  }
-}
-
-# Target Group
-resource "aws_lb_target_group" "ly_tg" {
-  name     = "${var.prefix}${var.project_name}-tg"
-  port     = 30080
-  protocol = "HTTP"
-  vpc_id   = aws_vpc.ly_vpc.id
-
-  health_check {
-    enabled             = true
-    healthy_threshold   = 2
-    interval            = 30
-    matcher             = "200"
-    path                = "/"
-    port                = "traffic-port"
-    protocol            = "HTTP"
-    timeout             = 5
-    unhealthy_threshold = 2
-  }
-
-  tags = {
-    Name = "${var.prefix}${var.project_name}-tg"
-  }
-}
-
-# ALB Listener
-resource "aws_lb_listener" "ly_listener" {
-  load_balancer_arn = aws_lb.ly_alb.arn
-  port              = "80"
-  protocol          = "HTTP"
-
-  default_action {
-    type             = "forward"
-    target_group_arn = aws_lb_target_group.ly_tg.arn
   }
 }

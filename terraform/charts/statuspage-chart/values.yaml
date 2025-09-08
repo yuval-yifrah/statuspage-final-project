@@ -6,14 +6,18 @@ image:
   tag: "latest"
 
 service:
-  type: NodePort
+  type: ClusterIP  # Changed from NodePort to ClusterIP for Ingress
   port: 80
   targetPort: 8000
-  nodePort: 30080
 
+ingress:
+  enabled: true
+  host: statuspage.example.com  # Replace with your domain
+  
 django:
   debug: false
-  allowedHosts: "*"
+  allowedHosts: 
+    - "*"
   database:
     host: ly-statuspage-rds.cx248m4we6k7.us-east-1.rds.amazonaws.com
     name: statuspage
@@ -41,4 +45,7 @@ autoscaling:
 secrets:
   databaseUser: ""
   databasePassword: ""
+
+serviceAccount:
+  name: statuspage-sa
 

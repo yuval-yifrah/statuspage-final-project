@@ -81,12 +81,24 @@ output "redis_endpoint" {
   sensitive   = true
 }
 
-output "alb_dns_name" {
-  description = "Application Load Balancer DNS name"
-  value       = aws_lb.ly_alb.dns_name
+output "nginx_ingress_ip" {
+  description = "NGINX Ingress Controller LoadBalancer IP"
+  value       = "Get from: kubectl get svc -n ingress-nginx"
 }
 
-output "alb_zone_id" {
-  description = "ALB Route53 zone ID"
-  value       = aws_lb.ly_alb.zone_id
+output "argocd_server_ip" {
+  description = "ArgoCD Server LoadBalancer IP"
+  value       = "Get from: kubectl get svc -n argocd"
 }
+output "db_host" {
+  value = aws_db_instance.my_db.address
+}
+
+output "db_port" {
+  value = aws_db_instance.my_db.port
+}
+
+output "db_name" {
+  value = aws_db_instance.my_db.db_name
+}
+

@@ -16,6 +16,7 @@ spec:
       labels:
         {{- include "statuspage-chart.selectorLabels" . | nindent 8 }}
     spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
       containers:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
@@ -26,7 +27,9 @@ spec:
               protocol: TCP
           env:
             - name: ALLOWED_HOSTS
-              value: "{{ .Values.django.allowedHosts }}"
+              value: {{ .Values.django.allowedHosts | join "," | quote }}
+            - name: DJANGO_ALLOWED_HOSTS
+              value: {{ .Values.django.allowedHosts | join "," | quote }}
             - name: DEBUG
               value: "{{ .Values.django.debug }}"
             - name: DATABASE_HOST
@@ -53,6 +56,10 @@ spec:
               value: "{{ .Values.django.redis.database }}"
             - name: STATUS_PAGE_CONFIGURATION
               value: "statuspage.settings"
+          volumeMounts:
+            - name: secrets-store-inline
+              mountPath: "/mnt/secrets-store"
+              readOnly: true
           livenessProbe:
             httpGet:
               path: /
@@ -74,8 +81,4 @@ spec:
             readOnly: true
             volumeAttributes:
               secretProviderClass: "db-secrets"
-      volumeMounts:
-        - name: secrets-store-inline
-          mountPath: "/mnt/secrets-store"
-          readOnly: true
 

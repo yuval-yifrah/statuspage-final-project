@@ -13,8 +13,8 @@ vpc_cidr = "10.0.0.0/16"
 cluster_version = "1.28"
 
 # --- Node Group ---
-node_desired_size   = 2
-node_max_size       = 3
+node_desired_size   = 3
+node_max_size       = 5
 node_min_size       = 2
 node_instance_type  = "t3.small"
 
