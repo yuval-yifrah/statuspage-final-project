@@ -8,7 +8,7 @@ resource "aws_iam_role" "statuspage_irsa_role" {
       {
         Effect = "Allow"
         Principal = {
-          Federated = aws_iam_openid_connect_provider.eks.id
+          Federated = aws_iam_openid_connect_provider.eks.arn
         }
         Action = "sts:AssumeRoleWithWebIdentity"
         Condition = {
@@ -21,9 +21,23 @@ resource "aws_iam_role" "statuspage_irsa_role" {
   })
 }
 
-# הרשאות ל-Secrets Manager
-resource "aws_iam_role_policy_attachment" "statuspage_secrets" {
-  role       = aws_iam_role.statuspage_irsa_role.name
-  policy_arn = "arn:aws:iam::aws:policy/SecretsManagerReadWrite"
+# Policy מצומצם ל-Secrets Manager
+resource "aws_iam_role_policy" "statuspage_irsa_policy" {
+  name = "statuspage-irsa-policy"
+  role = aws_iam_role.statuspage_irsa_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect   = "Allow",
+        Action   = [
+          "secretsmanager:GetSecretValue",
+          "secretsmanager:DescribeSecret"
+        ],
+        Resource = "arn:aws:secretsmanager:us-east-1:992382545251:secret:ly-statuspage-db-credentials-*"
+      }
+    ]
+  })
 }
 

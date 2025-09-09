@@ -90,15 +90,19 @@ output "argocd_server_ip" {
   description = "ArgoCD Server LoadBalancer IP"
   value       = "Get from: kubectl get svc -n argocd"
 }
+
 output "db_host" {
-  value = aws_db_instance.my_db.address
+  description = "RDS endpoint"
+  value       = aws_db_instance.ly_rds.address
 }
 
 output "db_port" {
-  value = aws_db_instance.my_db.port
+  description = "RDS port"
+  value       = aws_db_instance.ly_rds.port
 }
 
 output "db_name" {
-  value = aws_db_instance.my_db.db_name
+  description = "RDS database name"
+  value       = aws_db_instance.ly_rds.db_name
 }
 

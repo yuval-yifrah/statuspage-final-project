@@ -3,21 +3,23 @@ replicaCount: 2
 image:
   repository: 992382545251.dkr.ecr.us-east-1.amazonaws.com/ly-statuspage-repo
   pullPolicy: Always
-  tag: "latest"
+  tag: "v3"  # Will be auto-updated by build script
 
 service:
-  type: ClusterIP  # Changed from NodePort to ClusterIP for Ingress
+  type: ClusterIP
   port: 80
   targetPort: 8000
 
 ingress:
   enabled: true
-  host: statuspage.example.com  # Replace with your domain
+  host: a39da5fe080d744c9998fd7d24c61034-75ed17013d9b795d.elb.us-east-1.amazonaws.com
+
+siteUrl: "http://a39da5fe080d744c9998fd7d24c61034-75ed17013d9b795d.elb.us-east-1.amazonaws.com"
   
 django:
   debug: false
-  allowedHosts: 
-    - "*"
+  allowedHosts: "*"
+  secretKey: "C2ldtKfBnOk-No8K4yTD4uAHKXmdii38hPzbEWuxRTERgRDPXkdT1MzmuRn9EKoW4Mc"
   database:
     host: ly-statuspage-rds.cx248m4we6k7.us-east-1.rds.amazonaws.com
     name: statuspage
@@ -27,13 +29,20 @@ django:
     port: 6379
     database: 0
 
+serviceAccount:
+  create: true
+  automount: true
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::992382545251:role/statuspage-irsa-role
+  name: "statuspage-sa"
+
 resources:
   requests:
-    memory: "256Mi"
-    cpu: "250m"
-  limits:
     memory: "512Mi"
     cpu: "500m"
+  limits:
+    memory: "1Gi"
+    cpu: "1000m"
 
 autoscaling:
   enabled: true
@@ -41,11 +50,3 @@ autoscaling:
   maxReplicas: 10
   targetCPUUtilizationPercentage: 70
   targetMemoryUtilizationPercentage: 80
-
-secrets:
-  databaseUser: ""
-  databasePassword: ""
-
-serviceAccount:
-  name: statuspage-sa
-
