@@ -1,57 +1,51 @@
-# Dockerfile for StatusPage Django Application
+# Use Python 3.10+ as required
 FROM python:3.10-slim
 
-# Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1
-ENV PYTHONUNBUFFERED=1
-ENV DEBIAN_FRONTEND=noninteractive
-
-# Set work directory
-WORKDIR /app
-
-# Install system dependencies (minimal required for your requirements.txt)
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        gcc \
-        libpq-dev \
-        libxml2-dev \
-        libxslt1-dev \
-        libffi-dev \
-        libssl-dev \
-        libjpeg-dev \
-        libfreetype6-dev \
-        liblcms2-dev \
-        libwebp-dev \
+# Install system packages required by Status-Page
+RUN apt-get update && apt-get install -y \
+    python3-dev \
+    build-essential \
+    libxml2-dev \
+    libxslt1-dev \
+    libffi-dev \
+    libpq-dev \
+    libssl-dev \
+    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements first for better Docker layer caching
-COPY requirements.txt /app/
+# Create statuspage user (fix the group creation issue)
+RUN groupadd --system statuspage && \
+    useradd --system --gid statuspage --home-dir /opt/status-page statuspage
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Create application directory
+WORKDIR /opt/status-page
 
-# Copy project files
-COPY . /app/
+# Copy application code
+COPY . .
 
-# Create non-root user
-RUN addgroup --system statuspage \
-    && adduser --system --group statuspage
+# Install Python dependencies with rq-scheduler fix
+RUN pip install --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt && \
+    pip uninstall -y rq_scheduler || true && \
+    pip install --no-cache-dir --upgrade --force-reinstall "rq-scheduler>=0.14.0"
 
-# Change ownership of the app directory
-RUN chown -R statuspage:statuspage /app
+# Test that rq_scheduler works
+RUN python -c "import rq, rq_scheduler; from rq_scheduler import Scheduler; print('RQ version:', rq.__version__); print('rq_scheduler OK')"
 
-# Switch to non-root user
+# Create media directory
+RUN mkdir -p statuspage/media
+
+# Set ownership
+RUN chown -R statuspage:statuspage /opt/status-page
+
+# Switch to statuspage user
 USER statuspage
 
-# Change to the statuspage subdirectory where manage.py is located
-WORKDIR /app/statuspage
+# Set working directory for Django
+WORKDIR /opt/status-page
 
-# Expose port
+# Expose port 8000
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=30s --start-period=5s --retries=3 \
-    CMD python -c "import requests; requests.get('http://localhost:8000', timeout=10)" || exit 1
-
-# Command to run the application from the statuspage directory
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "--timeout", "120", "statuspage.wsgi:application"]
+# Run database migrations and start server
+CMD ["bash", "-c", "cd statuspage && python manage.py migrate && python manage.py collectstatic --noinput && gunicorn --bind 0.0.0.0:8000 statuspage.wsgi:application"]
