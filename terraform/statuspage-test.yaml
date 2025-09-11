@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: statuspage-test
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: statuspage-test
+  template:
+    metadata:
+      labels:
+        app: statuspage-test
+    spec:
+      containers:
+      - name: statuspage
+        image: 992382545251.dkr.ecr.us-east-1.amazonaws.com/ly-statuspage-repo:v8
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DEBUG
+          value: "true"
+        - name: ALLOWED_HOSTS
+          value: "*"
