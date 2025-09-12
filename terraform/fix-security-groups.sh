@@ -1,51 +1,63 @@
 #!/bin/bash
 
-echo "🔧 Fixing Security Groups for StatusPage connectivity..."
+echo "🔧 Auto-fixing Security Groups for StatusPage connectivity..."
 
-# Fixed Security Group IDs
-RDS_SG="sg-022f83acddff3d626"
-REDIS_SG="sg-09df8f174c45a903b"
-EKS_SG1="sg-014216e1ffc4120a4"
-EKS_SG2="sg-0069fc73a334b3c3d"
+# Get EKS cluster name and region
+CLUSTER_NAME="ly-statuspage-cluster"
+REGION="us-east-1"
 
-echo "📡 Adding EKS Security Groups to RDS..."
+echo "📡 Auto-detecting Security Groups..."
 
-# Add EKS SGs to RDS (PostgreSQL port 5432)
-aws ec2 authorize-security-group-ingress \
-  --group-id $RDS_SG \
-  --protocol tcp \
-  --port 5432 \
-  --source-group $EKS_SG1 \
-  --region us-east-1 2>/dev/null && echo "✅ Added $EKS_SG1 to RDS" || echo "ℹ️  Rule already exists: $EKS_SG1 -> RDS"
+# Get RDS Security Group
+echo "🔍 Finding RDS Security Group..."
+RDS_SG=$(aws rds describe-db-instances --db-instance-identifier ly-statuspage-rds --region $REGION --query 'DBInstances[0].VpcSecurityGroups[0].VpcSecurityGroupId' --output text)
+echo "Found RDS SG: $RDS_SG"
 
-aws ec2 authorize-security-group-ingress \
-  --group-id $RDS_SG \
-  --protocol tcp \
-  --port 5432 \
-  --source-group $EKS_SG2 \
-  --region us-east-1 2>/dev/null && echo "✅ Added $EKS_SG2 to RDS" || echo "ℹ️  Rule already exists: $EKS_SG2 -> RDS"
+# Get Redis Security Group
+echo "🔍 Finding Redis Security Group..."
+REDIS_SG=$(aws elasticache describe-cache-clusters --cache-cluster-id ly-statuspage-redis --region $REGION --query 'CacheClusters[0].SecurityGroups[0].SecurityGroupId' --output text)
+echo "Found Redis SG: $REDIS_SG"
 
-echo "📡 Adding EKS Security Groups to Redis..."
+# Get EKS node instance IDs
+echo "🔍 Finding EKS nodes..."
+NODE_INSTANCE_IDS=$(kubectl get nodes -o jsonpath='{.items[*].spec.providerID}' | tr ' ' '\n' | sed 's|.*\/||' | tr '\n' ' ')
+echo "Found EKS nodes: $NODE_INSTANCE_IDS"
 
-# Add EKS SGs to Redis (port 6379)
-aws ec2 authorize-security-group-ingress \
-  --group-id $REDIS_SG \
-  --protocol tcp \
-  --port 6379 \
-  --source-group $EKS_SG1 \
-  --region us-east-1 2>/dev/null && echo "✅ Added $EKS_SG1 to Redis" || echo "ℹ️  Rule already exists: $EKS_SG1 -> Redis"
+# Get unique Security Groups from all EKS nodes
+echo "🔍 Finding EKS Security Groups..."
+EKS_SGS=$(aws ec2 describe-instances --instance-ids $NODE_INSTANCE_IDS --region $REGION --query 'Reservations[*].Instances[*].SecurityGroups[*].GroupId' --output text | tr '\t' '\n' | sort -u | tr '\n' ' ')
+echo "Found EKS SGs: $EKS_SGS"
 
-aws ec2 authorize-security-group-ingress \
-  --group-id $REDIS_SG \
-  --protocol tcp \
-  --port 6379 \
-  --source-group $EKS_SG2 \
-  --region us-east-1 2>/dev/null && echo "✅ Added $EKS_SG2 to Redis" || echo "ℹ️  Rule already exists: $EKS_SG2 -> Redis"
+echo ""
+echo "📡 Adding EKS Security Groups to RDS (port 5432)..."
+for SG in $EKS_SGS; do
+    aws ec2 authorize-security-group-ingress \
+        --group-id $RDS_SG \
+        --protocol tcp \
+        --port 5432 \
+        --source-group $SG \
+        --region $REGION 2>/dev/null && echo "✅ Added $SG to RDS" || echo "ℹ️  Rule already exists: $SG -> RDS"
+done
 
-echo "🎯 Checking pod status..."
-kubectl get pods -l app.kubernetes.io/name=statuspage-chart
+echo ""
+echo "📡 Adding EKS Security Groups to Redis (port 6379)..."
+for SG in $EKS_SGS; do
+    aws ec2 authorize-security-group-ingress \
+        --group-id $REDIS_SG \
+        --protocol tcp \
+        --port 6379 \
+        --source-group $SG \
+        --region $REGION 2>/dev/null && echo "✅ Added $SG to Redis" || echo "ℹ️  Rule already exists: $SG -> Redis"
+done
 
+echo ""
+echo "🎯 Checking current pod status..."
+kubectl get pods -n default | grep statuspage
+
+echo ""
 echo "📋 To check logs after pods restart:"
-echo "kubectl logs -l app.kubernetes.io/name=statuspage-chart"
+echo "kubectl logs -f \$(kubectl get pods -n default -l app.kubernetes.io/name=statuspage-chart -o jsonpath='{.items[0].metadata.name}')"
 
-echo "🚀 Security Groups fixed! Pods should be able to connect to RDS and Redis now."
+echo ""
+echo "🚀 Security Groups auto-fixed! StatusPage pods should be able to connect to RDS and Redis now."
+echo "💡 The pods may need a few minutes to restart and establish connections."

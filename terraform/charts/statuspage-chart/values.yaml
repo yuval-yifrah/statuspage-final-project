@@ -37,11 +37,11 @@ serviceAccount:
 
 resources:
   requests:
-    memory: "512Mi"
-    cpu: "500m"
+    memory: "512Mi"  # הקטן מ-1Gi
+    cpu: "250m"      # הקטן מ-500m
   limits:
-    memory: "1Gi"
-    cpu: "1000m"
+    memory: "1Gi"    # הקטן מ-3Gi  
+    cpu: "500m"      # הקטן מ-1000m
 
 autoscaling:
   enabled: true
