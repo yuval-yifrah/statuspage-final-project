@@ -21,15 +21,19 @@ spec:
         - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/bash", "-c"]
+          args: ["cd /opt/status-page/statuspage && python manage.py migrate && python manage.py collectstatic --no-input && python -c \"import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'statuspage.settings'); import django; django.setup(); from django.conf import settings; print('DEBUG=True') if settings.DEBUG else print('Adding static URL patterns'); from django.urls import include, path; from django.conf.urls.static import static\" && gunicorn --bind 0.0.0.0:8000 --workers 3 statuspage.wsgi:application"]
           ports:
             - name: http
               containerPort: {{ .Values.service.targetPort }}
               protocol: TCP
           env:
+            - name: DJANGO_SERVE_STATIC
+              value: "true"
             - name: ALLOWED_HOSTS
               value: "{{ .Values.django.allowedHosts }}"
             - name: DEBUG
-              value: "{{ .Values.django.debug }}"
+              value: "true"
             - name: DATABASE_HOST
               value: "{{ .Values.django.database.host }}"
             - name: DATABASE_NAME
@@ -63,14 +67,14 @@ spec:
           livenessProbe:
             httpGet:
               path: /
-              port: http
+              port: 8000
             initialDelaySeconds: 60
             periodSeconds: 30
             timeoutSeconds: 10
           readinessProbe:
             httpGet:
               path: /
-              port: http
+              port: 8000
             initialDelaySeconds: 30
             periodSeconds: 10
             timeoutSeconds: 5

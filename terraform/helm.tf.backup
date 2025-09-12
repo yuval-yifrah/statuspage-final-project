@@ -17,12 +17,6 @@ provider "kubectl" {
   load_config_file       = false
 }
 
-provider "kubernetes" {
-  host                   = aws_eks_cluster.ly_eks.endpoint
-  cluster_ca_certificate = base64decode(aws_eks_cluster.ly_eks.certificate_authority[0].data)
-  token                  = data.aws_eks_cluster_auth.cluster.token
-}
-
 # התקנת CSI Driver לניהול Secrets
 resource "helm_release" "csi_driver" {
   name       = "csi-secrets-store"
@@ -47,38 +41,6 @@ resource "helm_release" "csi_driver_provider_aws" {
   version    = "0.3.8"
 
   depends_on = [helm_release.csi_driver]
-}
-
-# יצירת SecretProviderClass לחיבור AWS Secrets Manager
-resource "kubectl_manifest" "db_secrets_provider" {
-  yaml_body = <<YAML
-apiVersion: secrets-store.csi.x-k8s.io/v1
-kind: SecretProviderClass
-metadata:
-  name: db-secrets
-  namespace: default
-spec:
-  provider: aws
-  parameters:
-    objects: |
-      - objectName: "ly-statuspage-db-credentials"
-        objectType: "secretsmanager"
-        jmesPath:
-          - path: "username"
-            objectAlias: "username"
-          - path: "password"
-            objectAlias: "password"
-  secretObjects:
-  - secretName: db-secrets
-    type: Opaque
-    data:
-    - objectName: username
-      key: username
-    - objectName: password
-      key: password
-YAML
-
-  depends_on = [helm_release.csi_driver_provider_aws]
 }
 
 # התקנת NGINX Ingress Controller
@@ -148,7 +110,7 @@ resource "helm_release" "argocd" {
           }
         }
         extraArgs = [
-          "--insecure"
+          "--insecure" # For HTTP access, remove in production with proper SSL
         ]
       }
       configs = {
@@ -162,7 +124,7 @@ resource "helm_release" "argocd" {
   depends_on = [helm_release.cert_manager]
 }
 
-# ClusterIssuer for Let's Encrypt
+# ClusterIssuer for Let's Encrypt (using kubectl provider)
 resource "kubectl_manifest" "letsencrypt_issuer" {
   yaml_body = <<YAML
 apiVersion: cert-manager.io/v1
@@ -184,7 +146,6 @@ YAML
   depends_on = [helm_release.cert_manager]
 }
 
-# התקנת StatusPage
 resource "helm_release" "statuspage" {
   name       = "statuspage"
   chart      = "${path.module}/charts/statuspage-chart"
@@ -193,22 +154,91 @@ resource "helm_release" "statuspage" {
 
   depends_on = [
     aws_eks_node_group.ly_nodes,
-    kubectl_manifest.db_secrets_provider,
+    helm_release.nginx_ingress,  # תלוי אם את רוצה שהוא ירוץ אחרי ingress, אפשר להסיר
   ]
 
   values = [
-    file("${path.module}/charts/statuspage-chart/values.yaml")
+    # נטען את values.yaml המקורי
+    file("${path.module}/charts/statuspage-chart/values.yaml"),
+
+    # override ל-service + env + serviceAccount
+    <<-EOF
+    service:
+      name: "${var.prefix}-statuspage-lb"
+      type: LoadBalancer
+      port: 80
+      targetPort: 8000
+      protocol: TCP
+      annotations:
+        "service.beta.kubernetes.io/aws-load-balancer-type": "nlb"
+        "service.beta.kubernetes.io/aws-load-balancer-internal": "false"
+        "service.beta.kubernetes.io/aws-load-balancer-healthcheck-protocol": "TCP"
+        "service.beta.kubernetes.io/aws-load-balancer-healthcheck-port": "8000"
+
+    ingress:
+      enabled: false
+
+    serviceAccount:
+      create: false
+      name: statuspage-sa
+
+    env:
+      - name: SECRET_MANAGER_NAME
+        value: "ly-statuspage-db-credentials"
+      - name: AWS_REGION
+        value: "us-east-1"
+      - name: SECRET_KEY
+        valueFrom:
+          secretKeyRef:
+            name: django-secret
+            key: secret-key
+    EOF
   ]
 }
 
-# התקנת מערכת מוניטורינג
+# התקנת ה-Helm Chart של StatusPage
+# ArgoCD Application for StatusPage (optional - for GitOps workflow)
+resource "kubectl_manifest" "statuspage_argocd_application" {
+  yaml_body = <<YAML
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: statuspage
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/yuval-yifrah/statuspage-final-project.git
+    targetRevision: HEAD
+    path: charts/statuspage-chart
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: default
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+    - CreateNamespace=true
+YAML
+
+  depends_on = [helm_release.argocd]
+  
+  # This is optional - comment out if you don't want ArgoCD to manage the app initially
+  count = 0
+}
+
+provider "kubernetes" {
+  host                   = aws_eks_cluster.ly_eks.endpoint
+  cluster_ca_certificate = base64decode(aws_eks_cluster.ly_eks.certificate_authority[0].data)
+  token                  = data.aws_eks_cluster_auth.cluster.token
+}
 resource "helm_release" "monitoring" {
   name             = "monitoring"
   repository       = "https://prometheus-community.github.io/helm-charts"
   chart            = "kube-prometheus-stack"
   namespace        = "monitoring"
   create_namespace = true
-  
   values = [
     yamlencode({
       prometheus = {
@@ -253,6 +283,7 @@ resource "helm_release" "monitoring" {
         }
       }
       grafana = {
+        adminPassword = "admin123"
         resources = {
           requests = {
             memory = "512Mi"
@@ -266,37 +297,5 @@ resource "helm_release" "monitoring" {
       }
     })
   ]
-  
   depends_on = [aws_eks_node_group.ly_nodes]
-}
-
-# ArgoCD Application (אופציונלי)
-resource "kubectl_manifest" "statuspage_argocd_application" {
-  yaml_body = <<YAML
-apiVersion: argoproj.io/v1alpha1
-kind: Application
-metadata:
-  name: statuspage
-  namespace: argocd
-spec:
-  project: default
-  source:
-    repoURL: https://github.com/yuval-yifrah/statuspage-final-project.git
-    targetRevision: HEAD
-    path: terraform/charts/statuspage-chart
-  destination:
-    server: https://kubernetes.default.svc
-    namespace: default
-  syncPolicy:
-    automated:
-      prune: true
-      selfHeal: true
-    syncOptions:
-    - CreateNamespace=true
-YAML
-
-  depends_on = [helm_release.argocd]
-
-  # השבת זמנית - הסר comment כדי להפעיל ArgoCD management
-  count = 0
 }

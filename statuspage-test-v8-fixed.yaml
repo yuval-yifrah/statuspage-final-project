@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: statuspage-test-v8
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: statuspage-test-v8
+  template:
+    metadata:
+      labels:
+        app: statuspage-test-v8
+    spec:
+      containers:
+      - name: statuspage
+        image: 992382345251.dkr.ecr.us-east-1.amazonaws.com/ly-statuspage-repo:v8
+        ports:
+        - containerPort: 8001  # פורט הנכון לv8
+        env:
+        - name: DEBUG
+          value: "true"
+        - name: ALLOWED_HOSTS
+          value: "*"
+        - name: REDIS_HOST
+          value: "ly-statuspage-redis.7fftml.ng.0001.use1.cache.amazonaws.com"
+        - name: REDIS_PORT
+          value: "6379"
+        - name: DATABASE_HOST
+          value: "ly-statuspage-rds.cx248m4we6k7.us-east-1.rds.amazonaws.com"
+        - name: DATABASE_NAME
+          value: "statuspage"
+        - name: DATABASE_PORT
+          value: "5432"
+        - name: DATABASE_USER
+          value: "ly_statuspage"
+        - name: DATABASE_PASSWORD
+          value: "LYfinalproject!"
+        - name: SECRET_KEY
+          value: "test-key-123"
+        command: ["/bin/bash", "-c"]
+        args: ["cd /opt/status-page/statuspage && python manage.py migrate && gunicorn --bind 0.0.0.0:8001 --workers 3 statuspage.wsgi:application"]
