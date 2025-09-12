@@ -38,25 +38,25 @@ variable "cluster_version" {
 variable "node_desired_size" {
   description = "Desired number of nodes in the node group"
   type        = number
-  default     = 1
+  default     = 3
 }
 
 variable "node_max_size" {
   description = "Maximum number of nodes in the node group"
   type        = number
-  default     = 2
+  default     = 4
 }
 
 variable "node_min_size" {
   description = "Minimum number of nodes in the node group"
   type        = number
-  default     = 1
+  default     = 2
 }
 
 variable "node_instance_type" {
   description = "EC2 instance type for nodes"
   type        = string
-  default     = "t3.small"
+  default     = "t3.medium"
 }
 
 variable "db_instance_class" {
