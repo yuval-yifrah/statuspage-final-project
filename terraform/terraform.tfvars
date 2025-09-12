@@ -16,7 +16,7 @@ cluster_version = "1.28"
 node_desired_size   = 3
 node_max_size       = 5
 node_min_size       = 2
-node_instance_type  = "t3.small"
+node_instance_type  = "t3.medium"
 
 # --- Database Credentials ---
 db_name              = "statuspage"

@@ -33,6 +33,38 @@ resource "aws_iam_role_policy_attachment" "node_secrets_manager_policy" {
   role       = data.aws_iam_role.nodegroup_role.name
 }
 
+resource "aws_iam_role_policy" "ebs_csi_policy" {
+  name = "EBSCSIDriverPolicy"
+  role = data.aws_iam_role.nodegroup_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2:CreateSnapshot",
+          "ec2:AttachVolume",
+          "ec2:DetachVolume",
+          "ec2:ModifyVolume",
+          "ec2:DescribeAvailabilityZones",
+          "ec2:DescribeInstances",
+          "ec2:DescribeSnapshots",
+          "ec2:DescribeTags",
+          "ec2:DescribeVolumes",
+          "ec2:DescribeVolumesModifications",
+          "ec2:CreateVolume",
+          "ec2:DeleteVolume",
+          "ec2:DeleteSnapshot",
+          "ec2:CreateTags",
+          "ec2:DeleteTags"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 # IRSA for Grafana: service account in EKS can assume this role
 resource "aws_iam_role" "grafana_irsa" {
   name = "${var.prefix}${var.project_name}-grafana-irsa-role"
@@ -237,6 +269,7 @@ resource "helm_release" "statuspage" {
   chart      = "${path.module}/charts/statuspage-chart"
   namespace  = "default"
   create_namespace = true
+  force_update = true
 
   depends_on = [
     aws_eks_node_group.ly_nodes,
@@ -368,7 +401,8 @@ resource "helm_release" "monitoring" {
     aws_eks_node_group.ly_nodes,
     helm_release.aws_ebs_csi_driver,
     kubectl_manifest.grafana_secrets_provider,
-    aws_iam_role_policy.grafana_sm_read
+    aws_iam_role_policy.grafana_sm_read,
+    aws_iam_role_policy.ebs_csi_policy
   ]
 }
 

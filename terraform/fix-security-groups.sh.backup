@@ -1,0 +1,51 @@
+#!/bin/bash
+
+echo "🔧 Fixing Security Groups for StatusPage connectivity..."
+
+# Fixed Security Group IDs
+RDS_SG="sg-022f83acddff3d626"
+REDIS_SG="sg-09df8f174c45a903b"
+EKS_SG1="sg-01931070472c72441"
+EKS_SG2="sg-0069fc73a334b3c3d"
+
+echo "📡 Adding EKS Security Groups to RDS..."
+
+# Add EKS SGs to RDS (PostgreSQL port 5432)
+aws ec2 authorize-security-group-ingress \
+  --group-id $RDS_SG \
+  --protocol tcp \
+  --port 5432 \
+  --source-group $EKS_SG1 \
+  --region us-east-1 2>/dev/null && echo "✅ Added $EKS_SG1 to RDS" || echo "ℹ️  Rule already exists: $EKS_SG1 -> RDS"
+
+aws ec2 authorize-security-group-ingress \
+  --group-id $RDS_SG \
+  --protocol tcp \
+  --port 5432 \
+  --source-group $EKS_SG2 \
+  --region us-east-1 2>/dev/null && echo "✅ Added $EKS_SG2 to RDS" || echo "ℹ️  Rule already exists: $EKS_SG2 -> RDS"
+
+echo "📡 Adding EKS Security Groups to Redis..."
+
+# Add EKS SGs to Redis (port 6379)
+aws ec2 authorize-security-group-ingress \
+  --group-id $REDIS_SG \
+  --protocol tcp \
+  --port 6379 \
+  --source-group $EKS_SG1 \
+  --region us-east-1 2>/dev/null && echo "✅ Added $EKS_SG1 to Redis" || echo "ℹ️  Rule already exists: $EKS_SG1 -> Redis"
+
+aws ec2 authorize-security-group-ingress \
+  --group-id $REDIS_SG \
+  --protocol tcp \
+  --port 6379 \
+  --source-group $EKS_SG2 \
+  --region us-east-1 2>/dev/null && echo "✅ Added $EKS_SG2 to Redis" || echo "ℹ️  Rule already exists: $EKS_SG2 -> Redis"
+
+echo "🎯 Checking pod status..."
+kubectl get pods -l app.kubernetes.io/name=statuspage-chart
+
+echo "📋 To check logs after pods restart:"
+echo "kubectl logs -l app.kubernetes.io/name=statuspage-chart"
+
+echo "🚀 Security Groups fixed! Pods should be able to connect to RDS and Redis now."
