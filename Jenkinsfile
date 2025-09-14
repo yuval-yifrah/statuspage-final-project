@@ -12,9 +12,6 @@ pipeline {
         AWS_DEFAULT_REGION = "us-east-1"
         EKS_CLUSTER = "ly-statuspage-cluster"
         NAMESPACE = "default"
-        // Initialize variables - will be set in Version Management stage
-        IMAGE_TAG = ""
-        NEW_VERSION = ""
     }
     
     stages {
@@ -48,114 +45,65 @@ pipeline {
         stage('Version Management') {
             steps {
                 script {
-                    // First, check if version.txt exists
+                    // Check if version.txt exists
                     if (!fileExists('version.txt')) {
-                        error("ERROR: version.txt file not found! This file must exist and contain a valid version number.")
+                        error("ERROR: version.txt file not found!")
                     }
                     
+                    // Use a single shell script to handle everything and write final results
                     sh '''
-                        echo "Current directory: $(pwd)"
-                        echo "Files in current directory:"
-                        ls -la
-                        echo "Looking for version.txt:"
-                        find . -name "version.txt" -type f
-                    '''
-                    
-                    // Read and validate version
-                    sh '''
-                        # Try to read version.txt
+                        echo "=== Version Management Started ==="
+                        
+                        # Read current version
                         if ! CURRENT_VERSION=$(cat version.txt 2>/dev/null); then
                             echo "ERROR: Failed to read version.txt!"
                             exit 1
                         fi
                         
-                        echo "Found version.txt with content: '$CURRENT_VERSION'"
+                        echo "Current version from file: '$CURRENT_VERSION'"
                         
                         # Validate version is a number
                         if ! echo "$CURRENT_VERSION" | grep -qE '^[0-9]+$'; then
-                            echo "ERROR: version.txt contains invalid content: '$CURRENT_VERSION'"
+                            echo "ERROR: Invalid version: '$CURRENT_VERSION'"
                             exit 1
                         fi
                         
-                        echo "CURRENT_VERSION=$CURRENT_VERSION" > temp.env
-                    '''
-                    
-                    // Process version increment
-                    sh '''
-                        # Load current version
-                        CURRENT_VERSION=$(grep CURRENT_VERSION temp.env | cut -d= -f2)
-                        
-                        # Increment version
+                        # Calculate new version
                         NEW_VERSION=$((CURRENT_VERSION + 1))
-                        TAG="v$NEW_VERSION"
+                        IMAGE_TAG="v$NEW_VERSION"
                         
-                        echo "Current version: $CURRENT_VERSION"
-                        echo "New version: $NEW_VERSION"
-                        echo "Image tag: $TAG"
+                        echo "New version calculated: $NEW_VERSION"
+                        echo "Image tag: $IMAGE_TAG"
                         
-                        # Save to environment file
-                        echo "NEW_VERSION=$NEW_VERSION" > jenkins.env
-                        echo "IMAGE_TAG=$TAG" >> jenkins.env
-                    '''
-                    
-                    // Write new version
-                    sh '''
-                        # Load new version
-                        NEW_VERSION=$(grep NEW_VERSION jenkins.env | cut -d= -f2)
-                        
-                        # Try to write new version
+                        # Write new version to file
                         if ! echo "$NEW_VERSION" > version.txt; then
                             echo "ERROR: Failed to write to version.txt!"
                             exit 1
                         fi
                         
-                        # Verify the write was successful
+                        # Verify write
                         WRITTEN_VERSION=$(cat version.txt)
                         if [ "$WRITTEN_VERSION" != "$NEW_VERSION" ]; then
-                            echo "ERROR: Failed to verify version.txt update!"
-                            echo "Expected: $NEW_VERSION, Got: $WRITTEN_VERSION"
+                            echo "ERROR: Write verification failed!"
                             exit 1
                         fi
                         
                         echo "Successfully updated version.txt"
-                    '''
-                    
-                    // Update values.yaml
-                    sh '''
-                        TAG=$(grep IMAGE_TAG jenkins.env | cut -d= -f2)
                         
+                        # Update values.yaml
                         if [ -f "terraform/charts/statuspage-chart/values.yaml" ]; then
-                            sed -i "s/tag: \\".*\\"/tag: \\"$TAG\\"/" terraform/charts/statuspage-chart/values.yaml
-                            echo "Updated values.yaml:"
-                            grep "tag:" terraform/charts/statuspage-chart/values.yaml
-                        else
-                            echo "WARNING: values.yaml not found, skipping tag update"
+                            sed -i "s/tag: \\".*\\"/tag: \\"$IMAGE_TAG\\"/" terraform/charts/statuspage-chart/values.yaml
+                            echo "Updated values.yaml with tag: $IMAGE_TAG"
                         fi
                         
-                        echo "Version management completed successfully"
+                        # Write variables to files for other stages to read
+                        echo "$NEW_VERSION" > .jenkins_version
+                        echo "$IMAGE_TAG" > .jenkins_tag
+                        
+                        echo "=== Version Management Completed ==="
+                        echo "Version: $NEW_VERSION"
+                        echo "Tag: $IMAGE_TAG"
                     '''
-                    
-                    // Load the environment variables manually without readProperties plugin
-                    def envContent = readFile('jenkins.env')
-                    def lines = envContent.split('\n')
-                    def newVersion = ""
-                    def imageTag = ""
-                    
-                    for (line in lines) {
-                        if (line.startsWith('NEW_VERSION=')) {
-                            newVersion = line.split('=')[1]
-                        }
-                        if (line.startsWith('IMAGE_TAG=')) {
-                            imageTag = line.split('=')[1]
-                        }
-                    }
-                    
-                    env.NEW_VERSION = newVersion
-                    env.IMAGE_TAG = imageTag
-                    
-                    echo "Jenkins environment variables set:"
-                    echo "NEW_VERSION: ${env.NEW_VERSION}"
-                    echo "IMAGE_TAG: ${env.IMAGE_TAG}"
                 }
             }
         }
@@ -163,22 +111,28 @@ pipeline {
         stage('Build and Push Docker Image') {
             steps {
                 script {
+                    // Read the values from files
+                    def newVersion = readFile('.jenkins_version').trim()
+                    def imageTag = readFile('.jenkins_tag').trim()
+                    
+                    echo "Building with version: ${newVersion}, tag: ${imageTag}"
+                    
                     sh """
-                        echo "Building Docker image with tag: ${env.IMAGE_TAG}"
+                        echo "Building Docker image with tag: ${imageTag}"
                         
-                        # Build Docker image (exactly like your script)
-                        docker build -f status-page/Dockerfile -t statuspage-app:${env.IMAGE_TAG} ./status-page/
+                        # Build Docker image
+                        docker build -f status-page/Dockerfile -t statuspage-app:${imageTag} ./status-page/
                         
-                        # Tag the image for ECR
-                        docker tag statuspage-app:${env.IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:${env.IMAGE_TAG}
+                        # Tag for ECR
+                        docker tag statuspage-app:${imageTag} ${ECR_REGISTRY}/${ECR_REPOSITORY}:${imageTag}
                         
                         # Login to ECR
                         aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
                         
-                        # Push the image to ECR
-                        docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${env.IMAGE_TAG}
-
-                        echo "Image built and pushed with tag: ${env.IMAGE_TAG}"
+                        # Push to ECR
+                        docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${imageTag}
+                        
+                        echo "Image built and pushed successfully: ${imageTag}"
                     """
                 }
             }
@@ -190,20 +144,30 @@ pipeline {
             }
             steps {
                 script {
+                    // Read the tag from file
+                    def imageTag = readFile('.jenkins_tag').trim()
+                    
+                    echo "Deploying to EKS with tag: ${imageTag}"
+                    
                     sh """
-                        echo "Deploying to EKS with image tag: ${env.IMAGE_TAG}"
+                        echo "Configuring EKS access..."
                         
-                        # Configure kubectl for EKS with proper authentication
+                        # Configure kubectl for EKS
                         aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name ${EKS_CLUSTER}
                         
-                        # Test kubectl connection
-                        echo "Testing kubectl connection..."
-                        kubectl get nodes || {
+                        # Test connection and get proper AWS identity
+                        echo "Testing AWS credentials:"
+                        aws sts get-caller-identity
+                        
+                        echo "Testing EKS connection:"
+                        if ! kubectl get nodes --request-timeout=10s; then
                             echo "Failed to connect to EKS cluster"
-                            echo "Cluster: ${EKS_CLUSTER}"
-                            echo "Region: ${AWS_DEFAULT_REGION}"
+                            echo "Checking if cluster exists:"
+                            aws eks describe-cluster --name ${EKS_CLUSTER} --region ${AWS_DEFAULT_REGION} || true
                             exit 1
-                        }
+                        fi
+                        
+                        echo "EKS connection successful, deploying..."
                         
                         # Deploy using Helm
                         cd terraform/charts/statuspage-chart
@@ -212,9 +176,11 @@ pipeline {
                             --install \
                             --wait \
                             --timeout 600s \
-                            --set image.tag=${env.IMAGE_TAG}
+                            --set image.tag=${imageTag}
                         
-                        # Verify deployment
+                        echo "Deployment completed with tag: ${imageTag}"
+                        
+                        # Show deployment status
                         kubectl get pods -n ${NAMESPACE} -l app.kubernetes.io/name=statuspage-chart
                     """
                 }
@@ -227,8 +193,10 @@ pipeline {
             }
             steps {
                 script {
+                    def imageTag = readFile('.jenkins_tag').trim()
+                    
                     sh """
-                        echo "Running health check for deployment with tag: ${env.IMAGE_TAG}"
+                        echo "Running health check for tag: ${imageTag}"
                         
                         # Wait for pods to be ready
                         kubectl wait --for=condition=ready pod \
@@ -236,7 +204,7 @@ pipeline {
                             -n ${NAMESPACE} \
                             --timeout=300s
                         
-                        echo "Deployment completed successfully"
+                        echo "Health check passed for deployment: ${imageTag}"
                     """
                 }
             }
@@ -246,12 +214,20 @@ pipeline {
     post {
         always {
             script {
+                // Try to read the tag, but handle case where it doesn't exist
+                def imageTag = ""
+                try {
+                    imageTag = readFile('.jenkins_tag').trim()
+                } catch (Exception e) {
+                    imageTag = "unknown"
+                }
+                
                 sh """
                     echo "Pipeline completed for branch: ${BRANCH_NAME}"
-                    if [ -n "${env.IMAGE_TAG}" ]; then
-                        echo "Image built: ${ECR_REGISTRY}/${ECR_REPOSITORY}:${env.IMAGE_TAG}"
-                        # Cleanup Docker images to save space
-                        docker rmi ${ECR_REGISTRY}/${ECR_REPOSITORY}:${env.IMAGE_TAG} || true
+                    if [ "${imageTag}" != "unknown" ] && [ "${imageTag}" != "" ]; then
+                        echo "Image built: ${ECR_REGISTRY}/${ECR_REPOSITORY}:${imageTag}"
+                        # Cleanup Docker images
+                        docker rmi ${ECR_REGISTRY}/${ECR_REPOSITORY}:${imageTag} || true
                     fi
                     docker system prune -f || true
                 """
@@ -261,8 +237,15 @@ pipeline {
         success {
             script {
                 if (env.BRANCH_NAME == 'main') {
+                    def imageTag = ""
+                    try {
+                        imageTag = readFile('.jenkins_tag').trim()
+                    } catch (Exception e) {
+                        imageTag = "unknown"
+                    }
+                    
                     echo "Production deployment successful!"
-                    echo "StatusPage ${env.IMAGE_TAG} is now live"
+                    echo "StatusPage ${imageTag} is now live"
                 }
             }
         }
@@ -272,15 +255,11 @@ pipeline {
                 if (env.BRANCH_NAME == 'main') {
                     echo "Production deployment failed!"
                     sh """
-                        # Show recent pod events for debugging
-                        kubectl get events -n ${NAMESPACE} --sort-by='.lastTimestamp' | tail -20 || true
-                        
-                        # Show pod logs
-                        kubectl logs -l app.kubernetes.io/name=statuspage-chart -n ${NAMESPACE} --tail=50 || true
-                        
-                        # Rollback to previous version
-                        echo "Rolling back to previous Helm release..."
-                        helm rollback statuspage --namespace ${NAMESPACE} || echo "No rollback available"
+                        # Try to show debug info, but don't fail if kubectl doesn't work
+                        echo "Attempting to gather debug information..."
+                        kubectl get events -n ${NAMESPACE} --sort-by='.lastTimestamp' 2>/dev/null | tail -20 || echo "Could not get events"
+                        kubectl logs -l app.kubernetes.io/name=statuspage-chart -n ${NAMESPACE} --tail=50 2>/dev/null || echo "Could not get logs"
+                        helm rollback statuspage --namespace ${NAMESPACE} 2>/dev/null || echo "Could not rollback"
                     """
                 }
             }
@@ -288,7 +267,11 @@ pipeline {
         
         cleanup {
             script {
-                sh 'docker logout ${ECR_REGISTRY} || true'
+                sh '''
+                    # Clean up temporary files
+                    rm -f .jenkins_version .jenkins_tag jenkins.env temp.env || true
+                    docker logout ${ECR_REGISTRY} || true
+                '''
             }
         }
     }
