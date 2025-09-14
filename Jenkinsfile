@@ -71,15 +71,25 @@ pipeline {
                     }
                     
                     def currentVersion = versionContent.toInteger()
-                    def newVersion = currentVersion + 1
-                    def imageTag = "v${newVersion}"
+                    echo "Parsed current version as integer: ${currentVersion}"
                     
-                    // Set environment variables
-                    env.NEW_VERSION = newVersion.toString()
-                    env.IMAGE_TAG = imageTag
+                    def newVersion = currentVersion + 1
+                    echo "Calculated new version: ${newVersion}"
+                    
+                    def imageTag = "v${newVersion}"
+                    echo "Created image tag: ${imageTag}"
+                    
+                    // Set environment variables with explicit conversion
+                    env.NEW_VERSION = String.valueOf(newVersion)
+                    env.IMAGE_TAG = String.valueOf(imageTag)
+                    
+                    echo "Set env.NEW_VERSION to: ${env.NEW_VERSION}"
+                    echo "Set env.IMAGE_TAG to: ${env.IMAGE_TAG}"
                     
                     // Save new version
+                    echo "About to write '${env.NEW_VERSION}' to version.txt"
                     writeFile file: 'version.txt', text: env.NEW_VERSION
+                    echo "Successfully wrote to version.txt"
                     
                     echo "Version updated from ${currentVersion} to ${newVersion}"
                     echo "Building and deploying with tag: ${env.IMAGE_TAG}"
