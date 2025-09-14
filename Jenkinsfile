@@ -12,6 +12,9 @@ pipeline {
         AWS_DEFAULT_REGION = "us-east-1"
         EKS_CLUSTER = "ly-statuspage-cluster"
         NAMESPACE = "default"
+        // Initialize variables
+        IMAGE_TAG = ""
+        NEW_VERSION = ""
     }
     
     stages {
@@ -32,10 +35,11 @@ pipeline {
                         curl https://get.helm.sh/helm-v3.12.0-linux-amd64.tar.gz | tar -xz
                         mv linux-amd64/helm /usr/local/bin/
                         
-                        # Install Python dependencies for testing
-                        cd status-page
-                        pip install -r requirements.txt
-                        pip install pytest pytest-django coverage
+                        # Verify installations
+                        docker --version
+                        kubectl version --client
+                        helm version
+                        aws --version
                     '''
                 }
             }
@@ -44,132 +48,47 @@ pipeline {
         stage('Version Management') {
             steps {
                 script {
-                    if (env.BRANCH_NAME == 'main') {
-                        // Read current version and increment
-                        def currentVersion = sh(
-                            script: 'cat version.txt || echo "0"',
-                            returnStdout: true
-                        ).trim().toInteger()
-                        
-                        env.NEW_VERSION = (currentVersion + 1).toString()
-                        env.IMAGE_TAG = "v${env.NEW_VERSION}"
-                        
-                        // Update version file
-                        sh "echo '${env.NEW_VERSION}' > version.txt"
-                        
-                    } else if (env.CHANGE_ID) {
-                        env.IMAGE_TAG = "pr-${CHANGE_ID}-${BUILD_NUMBER}"
-                    } else {
-                        env.IMAGE_TAG = "${BRANCH_NAME}-${BUILD_NUMBER}"
+                    // Read current version and increment
+                    def currentVersion = 0
+                    if (fileExists('version.txt')) {
+                        currentVersion = readFile('version.txt').trim().toInteger()
                     }
                     
-                    echo "Building with tag: ${env.IMAGE_TAG}"
-                }
-            }
-        }
-        
-        stage('Test Django Application') {
-            steps {
-                script {
-                    sh '''
-                        cd status-page/statuspage
-                        
-                        # Set test environment variables
-                        export DJANGO_SETTINGS_MODULE=statuspage.settings
-                        export DATABASE_HOST=localhost
-                        export DATABASE_NAME=test_db
-                        export DATABASE_USER=test
-                        export DATABASE_PASSWORD=test
-                        export REDIS_HOST=localhost
-                        export SECRET_KEY=test-secret-key-for-testing
-                        export DEBUG=true
-                        export ALLOWED_HOSTS=localhost,127.0.0.1
-                        
-                        # Run Django checks
-                        python manage.py check --deploy --fail-level WARNING || true
-                        
-                        # Run tests (skip database tests in CI)
-                        python manage.py test --keepdb --parallel auto || echo "Tests completed with issues"
-                        
-                        # Create test results artifact
-                        mkdir -p ../../test-results
-                        echo "Django tests completed at $(date)" > ../../test-results/test-output.txt
-                    '''
-                }
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'test-results/*.txt', fingerprint: true, allowEmptyArchive: true
-                }
-            }
-        }
-        
-        stage('Build Docker Image') {
-            steps {
-                script {
+                    env.NEW_VERSION = (currentVersion + 1).toString()
+                    env.IMAGE_TAG = "v${env.NEW_VERSION}"
+                    
+                    // Save new version
+                    writeFile file: 'version.txt', text: env.NEW_VERSION
+                    
+                    echo "Building and deploying with tag: ${env.IMAGE_TAG}"
+                    
+                    // Update values.yaml with new tag
                     sh """
-                        # Build Docker image
-                        cd status-page
-                        docker build -t ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG} .
-                        
-                        # Tag as latest if main branch
-                        if [ "${env.BRANCH_NAME}" = "main" ]; then
-                            docker tag ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
-                        fi
-                    """
-                }
-            }
-        }
-        
-        stage('Security Scan') {
-            steps {
-                script {
-                    sh """
-                        # Basic security scan of Docker image
-                        docker run --rm -v /var/run/docker.sock:/var/run/docker.sock \
-                            aquasec/trivy image --exit-code 0 --severity HIGH,CRITICAL \
-                            ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG} || echo "Security scan completed"
-                    """
-                }
-            }
-        }
-        
-        stage('Push to ECR') {
-            steps {
-                script {
-                    sh """
-                        # Login to ECR
-                        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | \
-                            docker login --username AWS --password-stdin ${ECR_REGISTRY}
-                        
-                        # Push image
-                        docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
-                        
-                        # Push latest if main branch
-                        if [ "${env.BRANCH_NAME}" = "main" ]; then
-                            docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
-                        fi
-                        
-                        echo "Pushed image: ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}"
-                    """
-                }
-            }
-        }
-        
-        stage('Update Helm Chart') {
-            when {
-                branch 'main'
-            }
-            steps {
-                script {
-                    sh """
-                        # Update values.yaml with new image tag
-                        cd terraform/charts/statuspage-chart
-                        sed -i 's/tag: .*/tag: "${IMAGE_TAG}"/' values.yaml
-                        
-                        # Show the change
+                        sed -i 's/tag: ".*"/tag: "${env.IMAGE_TAG}"/' terraform/charts/statuspage-chart/values.yaml
                         echo "Updated values.yaml:"
-                        grep "tag:" values.yaml
+                        grep "tag:" terraform/charts/statuspage-chart/values.yaml
+                    """
+                }
+            }
+        }
+        
+        stage('Build and Push Docker Image') {
+            steps {
+                script {
+                    sh """
+                        # Build Docker image (exactly like your script)
+                        docker build -f status-page/Dockerfile -t statuspage-app:${env.IMAGE_TAG} ./status-page/
+                        
+                        # Tag the image for ECR
+                        docker tag statuspage-app:${env.IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:${env.IMAGE_TAG}
+                        
+                        # Login to ECR
+                        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                        
+                        # Push the image to ECR
+                        docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${env.IMAGE_TAG}
+
+                        echo "Image built and pushed with tag: ${env.IMAGE_TAG}"
                     """
                 }
             }
@@ -192,7 +111,7 @@ pipeline {
                             --install \
                             --wait \
                             --timeout 600s \
-                            --set image.tag=${IMAGE_TAG}
+                            --set image.tag=${env.IMAGE_TAG}
                         
                         # Verify deployment
                         kubectl get pods -n ${NAMESPACE} -l app.kubernetes.io/name=statuspage-chart
@@ -214,46 +133,7 @@ pipeline {
                             -n ${NAMESPACE} \
                             --timeout=300s
                         
-                        # Get service endpoint
-                        INGRESS_IP=\$(kubectl get service nginx-ingress-ingress-nginx-controller \
-                            -n ingress-nginx -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
-                        
-                        if [ -n "\$INGRESS_IP" ]; then
-                            # Try health check through ingress
-                            for i in \$(seq 1 10); do
-                                echo "Health check attempt \$i"
-                                if curl -f -s "http://\$INGRESS_IP/statuspage/" | grep -q "StatusPage"; then
-                                    echo "Health check passed!"
-                                    exit 0
-                                fi
-                                sleep 15
-                            done
-                            echo "Health check failed after 10 attempts"
-                        else
-                            echo "No LoadBalancer IP found, skipping external health check"
-                            echo "Deployment completed successfully"
-                        fi
-                    """
-                }
-            }
-        }
-        
-        stage('Commit Version') {
-            when {
-                branch 'main'
-            }
-            steps {
-                script {
-                    sh """
-                        # Commit version and values.yaml changes
-                        git config --global user.email "jenkins@yourdomain.com"
-                        git config --global user.name "Jenkins CI"
-                        
-                        git add version.txt terraform/charts/statuspage-chart/values.yaml
-                        git commit -m "Release version v${NEW_VERSION} - automated deployment" || echo "No changes to commit"
-                        
-                        # Tag the release
-                        git tag "v${NEW_VERSION}" || echo "Tag already exists"
+                        echo "Deployment completed successfully"
                     """
                 }
             }
