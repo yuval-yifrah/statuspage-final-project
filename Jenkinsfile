@@ -48,18 +48,40 @@ pipeline {
         stage('Version Management') {
             steps {
                 script {
-                    // Read current version and increment
-                    def currentVersion = 0
-                    if (fileExists('version.txt')) {
-                        currentVersion = readFile('version.txt').trim().toInteger()
+                    // Debug: Show current directory and files
+                    sh '''
+                        echo "Current directory: $(pwd)"
+                        echo "Files in current directory:"
+                        ls -la
+                        echo "Looking for version.txt:"
+                        find . -name "version.txt" -type f
+                    '''
+                    
+                    // Fail if version.txt doesn't exist
+                    if (!fileExists('version.txt')) {
+                        error("version.txt file not found! This file should exist with the current version number.")
                     }
                     
-                    env.NEW_VERSION = (currentVersion + 1).toString()
-                    env.IMAGE_TAG = "v${env.NEW_VERSION}"
+                    // Read current version
+                    def versionContent = readFile('version.txt').trim()
+                    echo "Found version.txt with content: '${versionContent}'"
+                    
+                    if (!versionContent || versionContent.isEmpty()) {
+                        error("version.txt is empty! It should contain a version number.")
+                    }
+                    
+                    def currentVersion = versionContent.toInteger()
+                    def newVersion = currentVersion + 1
+                    def imageTag = "v${newVersion}"
+                    
+                    // Set environment variables
+                    env.NEW_VERSION = newVersion.toString()
+                    env.IMAGE_TAG = imageTag
                     
                     // Save new version
                     writeFile file: 'version.txt', text: env.NEW_VERSION
                     
+                    echo "Version updated from ${currentVersion} to ${newVersion}"
                     echo "Building and deploying with tag: ${env.IMAGE_TAG}"
                     
                     // Update values.yaml with new tag
