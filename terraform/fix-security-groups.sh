@@ -15,7 +15,7 @@ echo "Found RDS SG: $RDS_SG"
 
 # Get Redis Security Group
 echo "🔍 Finding Redis Security Group..."
-REDIS_SG=$(aws elasticache describe-cache-clusters --cache-cluster-id ly-statuspage-redis --region $REGION --query 'CacheClusters[0].SecurityGroups[0].SecurityGroupId' --output text)
+REDIS_SG=$(aws elasticache describe-cache-clusters --cache-cluster-id ly-statuspage-redis-001 --region $REGION --query 'CacheClusters[0].SecurityGroups[0].SecurityGroupId' --output text)
 echo "Found Redis SG: $REDIS_SG"
 
 # Get EKS node instance IDs

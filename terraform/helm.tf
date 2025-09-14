@@ -174,15 +174,23 @@ resource "helm_release" "nginx_ingress" {
     },
     {
       name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-name"
-      value = "${var.prefix}nginx-nlb"
+      value = "${var.prefix}nginx-alb"
     },
     {
       name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-type"
-      value = "nlb"
+      value = "nlb-ip"
     },
     {
       name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-scheme"
       value = "internet-facing"
+    },
+    {
+      name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-backend-protocol"
+      value = "http"
+    },
+    {
+      name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-cross-zone-load-balancing-enabled"
+      value = "true"
     }
   ]
 
@@ -293,6 +301,7 @@ resource "helm_release" "aws_ebs_csi_driver" {
 
 # יצירת SecretProviderClass לGrafana
 resource "kubectl_manifest" "grafana_secrets_provider" {
+  count = 0
   yaml_body = file("${path.module}/charts/statuspage-chart/templates/SecretProviderClass-grafana.yaml")
   depends_on = [helm_release.csi_driver_provider_aws]
 }
@@ -311,8 +320,8 @@ resource "helm_release" "monitoring" {
       prometheus = {
         prometheusSpec = {
           resources = {
-            requests = { memory = "128Mi", cpu = "50m" }
-            limits   = { memory = "256Mi", cpu = "125m" }
+            requests = { memory = "512Mi", cpu = "100m" }
+            limits   = { memory = "1Gi", cpu = "250m" }
           }
           storageSpec = {
             volumeClaimTemplate = {
@@ -400,7 +409,7 @@ resource "helm_release" "monitoring" {
   depends_on = [
     aws_eks_node_group.ly_nodes,
     helm_release.aws_ebs_csi_driver,
-    kubectl_manifest.grafana_secrets_provider,
+    # kubectl_manifest.grafana_secrets_provider,
     aws_iam_role_policy.grafana_sm_read,
     aws_iam_role_policy.ebs_csi_policy
   ]
@@ -436,3 +445,84 @@ YAML
   count = 0
 }
 
+# Ingress לPrometheus
+resource "kubectl_manifest" "prometheus_ingress" {
+  yaml_body = <<YAML
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: prometheus-ingress
+  namespace: monitoring
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - path: /prometheus(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: monitoring-kube-prometheus-prometheus
+            port:
+              number: 9090
+YAML
+  depends_on = [helm_release.nginx_ingress, helm_release.monitoring]
+}
+
+# Ingress לGrafana
+resource "kubectl_manifest" "grafana_ingress" {
+  yaml_body = <<YAML
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: grafana-ingress
+  namespace: monitoring
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - path: /grafana
+        pathType: Prefix
+        backend:
+          service:
+            name: monitoring-grafana
+            port:
+              number: 80
+YAML
+  depends_on = [helm_release.nginx_ingress, helm_release.monitoring]
+}
+
+# Ingress לStatusPage
+resource "kubectl_manifest" "statuspage_ingress" {
+  yaml_body = <<YAML
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: statuspage-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - path: /statuspage
+        pathType: Prefix
+        backend:
+          service:
+            name: statuspage-statuspage-chart
+            port:
+              number: 80
+YAML
+  depends_on = [helm_release.nginx_ingress, helm_release.statuspage]
+}

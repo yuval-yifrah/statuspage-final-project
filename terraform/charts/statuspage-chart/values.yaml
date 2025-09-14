@@ -3,7 +3,7 @@ replicaCount: 2
 image:
   repository: 992382545251.dkr.ecr.us-east-1.amazonaws.com/ly-statuspage-repo
   pullPolicy: Always
-  tag: "v8"
+  tag: "v21"
 
 service:
   type: LoadBalancer
@@ -23,7 +23,7 @@ django:
     name: statuspage
     port: 5432
   redis:
-    host: ly-statuspage-redis.7fftml.ng.0001.use1.cache.amazonaws.com
+    host: ly-statuspage-redis-001.7fftml.0001.use1.cache.amazonaws.com
     port: 6379
     database: 0
     cachingDatabase: 1
