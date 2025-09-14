@@ -135,10 +135,23 @@ pipeline {
                         echo "Version management completed successfully"
                     '''
                     
-                    // Load the environment variables from the file created in shell
-                    def props = readProperties file: 'jenkins.env'
-                    env.NEW_VERSION = props.NEW_VERSION
-                    env.IMAGE_TAG = props.IMAGE_TAG
+                    // Load the environment variables manually without readProperties plugin
+                    def envContent = readFile('jenkins.env')
+                    def lines = envContent.split('\n')
+                    def newVersion = ""
+                    def imageTag = ""
+                    
+                    for (line in lines) {
+                        if (line.startsWith('NEW_VERSION=')) {
+                            newVersion = line.split('=')[1]
+                        }
+                        if (line.startsWith('IMAGE_TAG=')) {
+                            imageTag = line.split('=')[1]
+                        }
+                    }
+                    
+                    env.NEW_VERSION = newVersion
+                    env.IMAGE_TAG = imageTag
                     
                     echo "Jenkins environment variables set:"
                     echo "NEW_VERSION: ${env.NEW_VERSION}"
