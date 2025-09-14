@@ -35,10 +35,8 @@ pipeline {
                         curl https://get.helm.sh/helm-v3.12.0-linux-amd64.tar.gz | tar -xz
                         mv linux-amd64/helm /usr/local/bin/
 
-                        # Install Python dependencies for testing
-                        cd status-page
-                        pip install -r requirements.txt
-                        pip install pytest pytest-django coverage
+                        # Install Docker CLI
+                        apt-get install -y docker.io
                     '''
                 }
             }
