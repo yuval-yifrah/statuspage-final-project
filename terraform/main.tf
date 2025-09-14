@@ -399,7 +399,7 @@ resource "aws_db_subnet_group" "ly_db_subnets" {
 resource "aws_db_instance" "ly_rds" {
   identifier     = "${var.prefix}${var.project_name}-rds"
   engine         = "postgres"
-  engine_version = "16.4"
+  engine_version = "16.8"
   instance_class = "db.m5.large"
   
   allocated_storage     = var.db_allocated_storage
@@ -442,50 +442,150 @@ resource "aws_ecr_repository" "ly_ecr" {
   }
 }
 
-# Jenkins EC2 Instance
+# IAM Role עבור Jenkins
+resource "aws_iam_role" "jenkins_role" {
+  name = "${var.prefix}${var.project_name}-jenkins-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "ec2.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Name = "${var.prefix}${var.project_name}-jenkins-role"
+    Purpose = "CI/CD"
+    Owner = "${var.prefix}"
+  }
+}
+
+# Policy עם הרשאות ספציפיות לCI/CD pipeline
+resource "aws_iam_role_policy" "jenkins_policy" {
+  name = "${var.prefix}${var.project_name}-jenkins-policy"
+  role = aws_iam_role.jenkins_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          # ECR permissions - לpush/pull Docker images
+          "ecr:GetAuthorizationToken",
+          "ecr:BatchCheckLayerAvailability",
+          "ecr:GetDownloadUrlForLayer",
+          "ecr:BatchGetImage",
+          "ecr:InitiateLayerUpload",
+          "ecr:UploadLayerPart",
+          "ecr:CompleteLayerUpload",
+          "ecr:PutImage",
+          "ecr:DescribeRepositories"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          # EKS permissions - לdeploy לקלסטר
+          "eks:DescribeCluster",
+          "eks:ListClusters",
+          "eks:DescribeNodegroup",
+          "eks:ListNodegroups"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          # Kubernetes permissions דרך EKS
+          "eks:AccessKubernetes"
+        ]
+        Resource = aws_eks_cluster.ly_eks.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          # S3 permissions - לartifacts ולogs
+          "s3:GetObject",
+          "s3:PutObject",
+          "s3:DeleteObject",
+          "s3:ListBucket"
+        ]
+        Resource = [
+          "arn:aws:s3:::${var.prefix}${var.project_name}-artifacts/*",
+          "arn:aws:s3:::${var.prefix}${var.project_name}-artifacts"
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          # CloudWatch Logs - לCI/CD logs
+          "logs:CreateLogGroup",
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+          "logs:DescribeLogGroups",
+          "logs:DescribeLogStreams"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          # Systems Manager - לparameter store (אם צריך)
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+          "ssm:GetParametersByPath"
+        ]
+        Resource = "arn:aws:ssm:*:*:parameter/${var.prefix}${var.project_name}/*"
+      }
+    ]
+  })
+}
+
+# Instance Profile - מחבר את הRole לEC2
+resource "aws_iam_instance_profile" "jenkins_profile" {
+  name = "${var.prefix}${var.project_name}-jenkins-profile"
+  role = aws_iam_role.jenkins_role.name
+
+  tags = {
+    Name = "${var.prefix}${var.project_name}-jenkins-profile"
+    Owner = "${var.prefix}"
+  }
+}
+
+# עדכן את Jenkins instance להשתמש בInstance Profile
 resource "aws_instance" "jenkins_server" {
   ami           = data.aws_ami.amazon_linux.id
   instance_type = "t3.large"
   subnet_id     = aws_subnet.ly_public_subnet[0].id
-
+  
+  # הוסף את Instance Profile
+  iam_instance_profile = aws_iam_instance_profile.jenkins_profile.name
+  
   root_block_device {
-    volume_size = 25
+    volume_size = 30
     volume_type = "gp3"
     encrypted   = true
   }
   
   vpc_security_group_ids = [aws_security_group.jenkins_sg.id]
-  
   key_name = var.key_pair_name
   
-  user_data = <<-EOF
-              #!/bin/bash
-              yum update -y
-              yum install -y docker
-              systemctl start docker
-              systemctl enable docker
-              usermod -a -G docker ec2-user
-              
-              # Install Jenkins
-              wget -O /etc/yum.repos.d/jenkins.repo https://pkg.jenkins.io/redhat-stable/jenkins.repo
-              rpm --import https://pkg.jenkins.io/redhat-stable/jenkins.io-2023.key
-              yum install -y java-11-amazon-corretto jenkins
-              systemctl start jenkins
-              systemctl enable jenkins
-              
-              # Install kubectl
-              curl -o kubectl https://amazon-eks.s3.us-west-2.amazonaws.com/1.28.1/2023-09-14/bin/linux/amd64/kubectl
-              chmod +x ./kubectl
-              mv ./kubectl /usr/local/bin
-              
-              # Install AWS CLI v2
-              curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-              unzip awscliv2.zip
-              ./aws/install
-              EOF
-
+  user_data = base64encode(templatefile("${path.module}/jenkins-setup.sh", {
+    git_repo_url = "https://github.com/Lirhen/jenkins-repo.git"
+  }))
+  
   tags = {
     Name = "${var.prefix}${var.project_name}-jenkins"
+    Type = "CI/CD"
+    Owner = "${var.prefix}"
   }
 }
 
@@ -493,30 +593,31 @@ resource "aws_instance" "jenkins_server" {
 resource "aws_security_group" "jenkins_sg" {
   name_prefix = "${var.prefix}${var.project_name}-jenkins-"
   vpc_id      = aws_vpc.ly_vpc.id
-
+  
   ingress {
     from_port   = 8080
     to_port     = 8080
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
+  
   ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
+  
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
-
+  
   tags = {
     Name = "${var.prefix}${var.project_name}-jenkins-sg"
+    Owner = "${var.prefix}"
   }
 }
 

@@ -22,7 +22,12 @@ spec:
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           command: ["/bin/bash", "-c"]
-          args: ["cd /opt/status-page/statuspage && python manage.py migrate && python manage.py collectstatic --no-input && python -c \"import os; os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'statuspage.settings'); import django; django.setup(); from django.conf import settings; print('DEBUG=True') if settings.DEBUG else print('Adding static URL patterns'); from django.urls import include, path; from django.conf.urls.static import static\" && gunicorn --bind 0.0.0.0:8000 --workers 3 statuspage.wsgi:application"]
+          args:
+            - >
+              cd /opt/status-page/statuspage &&
+              python manage.py migrate --no-input &&
+              python manage.py collectstatic --no-input &&
+              gunicorn --bind 0.0.0.0:8000 --workers 3 statuspage.wsgi:application
           ports:
             - name: http
               containerPort: {{ .Values.service.targetPort }}

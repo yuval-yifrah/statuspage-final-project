@@ -70,6 +70,21 @@ output "jenkins_url" {
   value       = "http://${aws_instance.jenkins_server.public_ip}:8080"
 }
 
+output "jenkins_ssh_command" {
+  description = "SSH command to connect to Jenkins server"
+  value       = "ssh -i ${var.key_pair_name}.pem ec2-user@${aws_instance.jenkins_server.public_ip}"
+}
+
+output "jenkins_initial_password_command" {
+  description = "Command to get Jenkins initial password"
+  value       = "ssh -i ${var.key_pair_name}.pem ec2-user@${aws_instance.jenkins_server.public_ip} 'docker logs jenkins 2>&1 | grep -A 5 \"Please use the following password\"'"
+}
+
+output "jenkins_iam_role_arn" {
+  description = "Jenkins IAM Role ARN"
+  value       = aws_iam_role.jenkins_role.arn
+}
+
 output "nat_gateway_ip" {
   description = "NAT Gateway Elastic IP"
   value       = aws_eip.ly_nat_eip.public_ip

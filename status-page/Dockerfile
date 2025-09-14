@@ -2,7 +2,8 @@
 FROM python:3.10-slim
 
 # Install system packages required by Status-Page
-RUN apt-get update && apt-get install -y \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
     python3-dev \
     build-essential \
     libxml2-dev \
@@ -11,7 +12,10 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     libssl-dev \
     zlib1g-dev \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean \
+    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/cache/apt/archives/* \
+    && rm -rf /tmp/*
 
 # Create statuspage user
 RUN groupadd --system statuspage && \
@@ -47,9 +51,6 @@ RUN cd statuspage && \
     python manage.py collectstatic --no-input && \
     python manage.py remove_stale_contenttypes --no-input || true
 
-# Copy gunicorn config
-RUN cp contrib/gunicorn.py ./gunicorn.py
-
 # Set ownership
 RUN chown -R statuspage:statuspage /opt/status-page
 
@@ -70,6 +71,14 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 CMD ["bash", "-c", "\
     python manage.py migrate --no-input && \
     python manage.py clearsessions && \
-    python manage.py remove_stale_contenttypes --no-input && \
-    gunicorn --config /opt/status-page/gunicorn.py statuspage.wsgi:application"]
-
+    gunicorn --bind 0.0.0.0:8000 \
+    --workers 3 \
+    --worker-class sync \
+    --worker-connections 1000 \
+    --max-requests 1000 \
+    --max-requests-jitter 100 \
+    --timeout 30 \
+    --keep-alive 2 \
+    --access-logfile - \
+    --error-logfile - \
+    statuspage.wsgi:application"]
