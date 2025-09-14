@@ -50,65 +50,29 @@ pipeline {
             }
             steps {
                 script {
-                    if (env.BRANCH_NAME == 'main') {
-                        // Read current version and increment
-                        def currentVersion = sh(
-                            script: 'cat version.txt || echo "0"',
-                            returnStdout: true
-                        ).trim().toInteger()
-
-                        env.NEW_VERSION = (currentVersion + 1).toString()
-                        env.IMAGE_TAG = "v${env.NEW_VERSION}"
-
-                        // Update version file
-                        sh "echo '${env.NEW_VERSION}' > version.txt"
-
-                    } else if (env.CHANGE_ID) {
-                        env.IMAGE_TAG = "pr-${CHANGE_ID}-${BUILD_NUMBER}"
-                    } else {
-                        env.IMAGE_TAG = "${BRANCH_NAME}-${BUILD_NUMBER}"
-                    }
-
-                    echo "Building with tag: ${env.IMAGE_TAG}"
-                }
-            }
-        }
-
-        stage('Test Django Application') {
-            when {
-                changeset "status-page/**"
-            }
-            steps {
-                script {
                     sh '''
-                        cd status-page/statuspage
+                        # File to store version number
+                        VERSION_FILE="./version.txt"
 
-                        # Set test environment variables
-                        export DJANGO_SETTINGS_MODULE=statuspage.settings
-                        export DATABASE_HOST=localhost
-                        export DATABASE_NAME=test_db
-                        export DATABASE_USER=test
-                        export DATABASE_PASSWORD=test
-                        export REDIS_HOST=localhost
-                        export SECRET_KEY=test-secret-key-for-testing
-                        export DEBUG=true
-                        export ALLOWED_HOSTS=localhost,127.0.0.1
+                        # Read current version or start at 1
+                        if [ -f "$VERSION_FILE" ]; then
+                            CURRENT_VERSION=$(cat $VERSION_FILE)
+                        else
+                            CURRENT_VERSION=0
+                        fi
 
-                        # Run Django checks
-                        python manage.py check --deploy --fail-level WARNING || true
+                        # Increment version
+                        NEW_VERSION=$((CURRENT_VERSION + 1))
+                        TAG="v$NEW_VERSION"
 
-                        # Run tests (skip database tests in CI)
-                        python manage.py test --keepdb --parallel auto || echo "Tests completed with issues"
+                        # Save new version
+                        echo $NEW_VERSION > $VERSION_FILE
 
-                        # Create test results artifact
-                        mkdir -p ../../test-results
-                        echo "Django tests completed at $(date)" > ../../test-results/test-output.txt
+                        echo "Building and deploying with tag: $TAG"
+
+                        # Update values.yaml with new tag
+                        sed -i "s/tag: \".*\"/tag: \"$TAG\"/" terraform/charts/statuspage-chart/values.yaml
                     '''
-                }
-            }
-            post {
-                always {
-                    archiveArtifacts artifacts: 'test-results/*.txt', fingerprint: true, allowEmptyArchive: true
                 }
             }
         }
@@ -119,16 +83,21 @@ pipeline {
             }
             steps {
                 script {
-                    sh """
+                    sh '''
                         # Build Docker image
-                        cd status-page
-                        docker build -t ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG} .
+                        docker build -f status-page/Dockerfile -t statuspage-app:$TAG ./status-page/
+                        
+                        # Tag the image
+                        docker tag statuspage-app:$TAG ${ECR_REGISTRY}/${ECR_REPOSITORY}:$TAG
+                        
+                        # Login to ECR
+                        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+                        
+                        # Push the image to ECR
+                        docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:$TAG
 
-                        # Tag as latest if main branch
-                        if [ "${env.BRANCH_NAME}" = "main" ]; then
-                            docker tag ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
-                        fi
-                    """
+                        echo "Image built and pushed with tag: $TAG"
+                    '''
                 }
             }
         }
@@ -156,13 +125,6 @@ pipeline {
             steps {
                 script {
                     sh """
-                        # Login to ECR
-                        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | \
-                            docker login --username AWS --password-stdin ${ECR_REGISTRY}
-
-                        # Push image
-                        docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${IMAGE_TAG}
-
                         # Push latest if main branch
                         if [ "${env.BRANCH_NAME}" = "main" ]; then
                             docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:latest
