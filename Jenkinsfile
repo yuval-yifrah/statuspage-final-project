@@ -48,160 +48,42 @@ pipeline {
         stage('Version Management') {
             steps {
                 script {
+                    // First, check if version.txt exists
+                    if (!fileExists('version.txt')) {
+                        error("ERROR: version.txt file not found! This file must exist and contain a valid version number.")
+                    }
+                    
                     sh '''
                         echo "Current directory: $(pwd)"
                         echo "Files in current directory:"
                         ls -la
                         echo "Looking for version.txt:"
                         find . -name "version.txt" -type f
-                        
-                        # Check if version.txt exists - FAIL if not found
-                        if [ ! -f "version.txt" ]; then
-                            echo "ERROR: version.txt file not found!"
-                            echo "This file must exist and contain a valid version number."
-                            exit 1
-                        fi
-                        
-                        # Try to read version.txt - FAIL if can't read
+                    '''
+                    
+                    // Read and validate version
+                    sh '''
+                        # Try to read version.txt
                         if ! CURRENT_VERSION=$(cat version.txt 2>/dev/null); then
                             echo "ERROR: Failed to read version.txt!"
-                            echo "Check file permissions or if file is corrupted."
                             exit 1
                         fi
                         
                         echo "Found version.txt with content: '$CURRENT_VERSION'"
                         
-                        # Validate version is a number - FAIL if invalid
-                        if ! echo "$CURRENT_VERSION" | grep -qE '^[0-9]+
-        
-        stage('Build and Push Docker Image') {
-            steps {
-                script {
-                    sh """
-                        echo "Building Docker image with tag: ${env.IMAGE_TAG}"
-                        
-                        # Build Docker image (exactly like your script)
-                        docker build -f status-page/Dockerfile -t statuspage-app:${env.IMAGE_TAG} ./status-page/
-                        
-                        # Tag the image for ECR
-                        docker tag statuspage-app:${env.IMAGE_TAG} ${ECR_REGISTRY}/${ECR_REPOSITORY}:${env.IMAGE_TAG}
-                        
-                        # Login to ECR
-                        aws ecr get-login-password --region ${AWS_DEFAULT_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
-                        
-                        # Push the image to ECR
-                        docker push ${ECR_REGISTRY}/${ECR_REPOSITORY}:${env.IMAGE_TAG}
-
-                        echo "Image built and pushed with tag: ${env.IMAGE_TAG}"
-                    """
-                }
-            }
-        }
-        
-        stage('Deploy to EKS') {
-            when {
-                branch 'main'
-            }
-            steps {
-                script {
-                    sh """
-                        echo "Deploying to EKS with image tag: ${env.IMAGE_TAG}"
-                        
-                        # Configure kubectl for EKS
-                        aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name ${EKS_CLUSTER}
-                        
-                        # Deploy using Helm
-                        cd terraform/charts/statuspage-chart
-                        helm upgrade statuspage . \
-                            --namespace ${NAMESPACE} \
-                            --install \
-                            --wait \
-                            --timeout 600s \
-                            --set image.tag=${env.IMAGE_TAG}
-                        
-                        # Verify deployment
-                        kubectl get pods -n ${NAMESPACE} -l app.kubernetes.io/name=statuspage-chart
-                    """
-                }
-            }
-        }
-        
-        stage('Health Check') {
-            when {
-                branch 'main'
-            }
-            steps {
-                script {
-                    sh """
-                        echo "Running health check for deployment with tag: ${env.IMAGE_TAG}"
-                        
-                        # Wait for pods to be ready
-                        kubectl wait --for=condition=ready pod \
-                            -l app.kubernetes.io/name=statuspage-chart \
-                            -n ${NAMESPACE} \
-                            --timeout=300s
-                        
-                        echo "Deployment completed successfully"
-                    """
-                }
-            }
-        }
-    }
-    
-    post {
-        always {
-            script {
-                sh """
-                    echo "Pipeline completed for branch: ${BRANCH_NAME}"
-                    if [ -n "${env.IMAGE_TAG}" ]; then
-                        echo "Image built: ${ECR_REGISTRY}/${ECR_REPOSITORY}:${env.IMAGE_TAG}"
-                        # Cleanup Docker images to save space
-                        docker rmi ${ECR_REGISTRY}/${ECR_REPOSITORY}:${env.IMAGE_TAG} || true
-                    fi
-                    docker system prune -f || true
-                """
-            }
-        }
-        
-        success {
-            script {
-                if (env.BRANCH_NAME == 'main') {
-                    echo "Production deployment successful!"
-                    echo "StatusPage ${env.IMAGE_TAG} is now live"
-                }
-            }
-        }
-        
-        failure {
-            script {
-                if (env.BRANCH_NAME == 'main') {
-                    echo "Production deployment failed!"
-                    sh """
-                        # Show recent pod events for debugging
-                        kubectl get events -n ${NAMESPACE} --sort-by='.lastTimestamp' | tail -20 || true
-                        
-                        # Show pod logs
-                        kubectl logs -l app.kubernetes.io/name=statuspage-chart -n ${NAMESPACE} --tail=50 || true
-                        
-                        # Rollback to previous version
-                        echo "Rolling back to previous Helm release..."
-                        helm rollback statuspage --namespace ${NAMESPACE} || echo "No rollback available"
-                    """
-                }
-            }
-        }
-        
-        cleanup {
-            script {
-                sh 'docker logout ${ECR_REGISTRY} || true'
-            }
-        }
-    }
-}; then
+                        # Validate version is a number
+                        if ! echo "$CURRENT_VERSION" | grep -qE '^[0-9]+$'; then
                             echo "ERROR: version.txt contains invalid content: '$CURRENT_VERSION'"
-                            echo "File must contain only a valid integer number."
                             exit 1
                         fi
+                        
+                        echo "CURRENT_VERSION=$CURRENT_VERSION" > temp.env
+                    '''
+                    
+                    // Process version increment
+                    sh '''
+                        # Load current version
+                        CURRENT_VERSION=$(grep CURRENT_VERSION temp.env | cut -d= -f2)
                         
                         # Increment version
                         NEW_VERSION=$((CURRENT_VERSION + 1))
@@ -211,27 +93,37 @@ pipeline {
                         echo "New version: $NEW_VERSION"
                         echo "Image tag: $TAG"
                         
-                        # Try to write new version - FAIL if can't write
-                        if ! echo $NEW_VERSION > version.txt; then
+                        # Save to environment file
+                        echo "NEW_VERSION=$NEW_VERSION" > jenkins.env
+                        echo "IMAGE_TAG=$TAG" >> jenkins.env
+                    '''
+                    
+                    // Write new version
+                    sh '''
+                        # Load new version
+                        NEW_VERSION=$(grep NEW_VERSION jenkins.env | cut -d= -f2)
+                        
+                        # Try to write new version
+                        if ! echo "$NEW_VERSION" > version.txt; then
                             echo "ERROR: Failed to write to version.txt!"
-                            echo "Check file permissions or disk space."
                             exit 1
                         fi
                         
                         # Verify the write was successful
-                        if [ "$(cat version.txt)" != "$NEW_VERSION" ]; then
+                        WRITTEN_VERSION=$(cat version.txt)
+                        if [ "$WRITTEN_VERSION" != "$NEW_VERSION" ]; then
                             echo "ERROR: Failed to verify version.txt update!"
-                            echo "Expected: $NEW_VERSION, Got: $(cat version.txt)"
+                            echo "Expected: $NEW_VERSION, Got: $WRITTEN_VERSION"
                             exit 1
                         fi
                         
                         echo "Successfully updated version.txt"
+                    '''
+                    
+                    // Update values.yaml
+                    sh '''
+                        TAG=$(grep IMAGE_TAG jenkins.env | cut -d= -f2)
                         
-                        # Create environment file for Jenkins
-                        echo "NEW_VERSION=$NEW_VERSION" > jenkins.env
-                        echo "IMAGE_TAG=$TAG" >> jenkins.env
-                        
-                        # Update values.yaml with new tag
                         if [ -f "terraform/charts/statuspage-chart/values.yaml" ]; then
                             sed -i "s/tag: \\".*\\"/tag: \\"$TAG\\"/" terraform/charts/statuspage-chart/values.yaml
                             echo "Updated values.yaml:"
