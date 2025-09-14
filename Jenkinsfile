@@ -193,8 +193,17 @@ pipeline {
                     sh """
                         echo "Deploying to EKS with image tag: ${env.IMAGE_TAG}"
                         
-                        # Configure kubectl for EKS
+                        # Configure kubectl for EKS with proper authentication
                         aws eks update-kubeconfig --region ${AWS_DEFAULT_REGION} --name ${EKS_CLUSTER}
+                        
+                        # Test kubectl connection
+                        echo "Testing kubectl connection..."
+                        kubectl get nodes || {
+                            echo "Failed to connect to EKS cluster"
+                            echo "Cluster: ${EKS_CLUSTER}"
+                            echo "Region: ${AWS_DEFAULT_REGION}"
+                            exit 1
+                        }
                         
                         # Deploy using Helm
                         cd terraform/charts/statuspage-chart
