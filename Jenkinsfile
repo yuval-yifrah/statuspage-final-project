@@ -301,7 +301,6 @@ pipeline {
                         # Show pod logs
                         kubectl logs -l app.kubernetes.io/name=statuspage-chart -n ${NAMESPACE} --tail=50 || true
                     """
-		    # Rollback to last working revision
                     sh """
                         echo "🚨 Rolling back to previous Helm release..."
                         helm rollback statuspage 1 --namespace ${NAMESPACE} || echo "No rollback available"
