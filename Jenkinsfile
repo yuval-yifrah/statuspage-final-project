@@ -39,6 +39,7 @@ pipeline {
         }
 
         stage('Version Management') {
+            when { anyOf { branch 'main'; changeRequest() } }
             steps {
                 script {
                     sh '''
@@ -77,6 +78,7 @@ pipeline {
         }
 
         stage('Build and Push Docker Image') {
+            when { anyOf { branch 'main'; changeRequest() } }
             steps {
                 script {
                     def newVersion = readFile('.jenkins_version').trim()
@@ -96,9 +98,7 @@ pipeline {
         }
 
         stage('Deploy to EKS') {
-            when {
-                branch 'main'
-            }
+            when { branch 'main' }
             steps {
                 script {
                     def imageTag = readFile('.jenkins_tag').trim()
@@ -122,9 +122,7 @@ pipeline {
         }
 
         stage('Health Check') {
-            when {
-                branch 'main'
-            }
+            when { branch 'main' }
             steps {
                 script {
                     def imageTag = readFile('.jenkins_tag').trim()
@@ -146,11 +144,7 @@ pipeline {
         always {
             script {
                 def imageTag = ""
-                try {
-                    imageTag = readFile('.jenkins_tag').trim()
-                } catch (Exception e) {
-                    imageTag = "unknown"
-                }
+                try { imageTag = readFile('.jenkins_tag').trim() } catch (Exception e) { imageTag = "unknown" }
 
                 sh """
                     echo "Pipeline completed for branch: ${BRANCH_NAME}"
