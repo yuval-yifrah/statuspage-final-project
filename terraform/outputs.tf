@@ -55,36 +55,6 @@ output "node_group_arn" {
   value       = aws_eks_node_group.ly_nodes.arn
 }
 
-output "jenkins_instance_id" {
-  description = "Jenkins EC2 instance ID"
-  value       = aws_instance.jenkins_server.id
-}
-
-output "jenkins_public_ip" {
-  description = "Jenkins server public IP"
-  value       = aws_instance.jenkins_server.public_ip
-}
-
-output "jenkins_url" {
-  description = "Jenkins access URL"
-  value       = "http://${aws_instance.jenkins_server.public_ip}:8080"
-}
-
-output "jenkins_ssh_command" {
-  description = "SSH command to connect to Jenkins server"
-  value       = "ssh -i ${var.key_pair_name}.pem ec2-user@${aws_instance.jenkins_server.public_ip}"
-}
-
-output "jenkins_initial_password_command" {
-  description = "Command to get Jenkins initial password"
-  value       = "ssh -i ${var.key_pair_name}.pem ec2-user@${aws_instance.jenkins_server.public_ip} 'docker logs jenkins 2>&1 | grep -A 5 \"Please use the following password\"'"
-}
-
-output "jenkins_iam_role_arn" {
-  description = "Jenkins IAM Role ARN"
-  value       = aws_iam_role.jenkins_role.arn
-}
-
 output "nat_gateway_ip" {
   description = "NAT Gateway Elastic IP"
   value       = aws_eip.ly_nat_eip.public_ip

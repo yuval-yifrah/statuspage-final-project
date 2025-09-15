@@ -291,7 +291,6 @@ resource "helm_release" "statuspage" {
   chart      = "${path.module}/charts/statuspage-chart"
   namespace  = "default"
   create_namespace = true
-  force_update = true
 
   depends_on = [
     aws_eks_node_group.ly_nodes,
