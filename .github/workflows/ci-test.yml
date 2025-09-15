@@ -6,6 +6,10 @@ on:
     paths:
       - 'status-page/**'
 
+permissions:
+  contents: read
+  pull-requests: write
+
 env:
   ECR_REGISTRY: 992382545251.dkr.ecr.us-east-1.amazonaws.com
   ECR_REPOSITORY: ly-statuspage-repo
