@@ -23,4 +23,8 @@ db_name              = "statuspage"
 db_instance_class    = "db.m5.large"
 db_allocated_storage = 20
 
+# SSL Configuration
+ssl_email = "yuviyi1408@gmail.com"
+domain_name = "34.225.241.216.nip.io"
+
 

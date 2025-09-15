@@ -45,65 +45,42 @@ pipeline {
         stage('Version Management') {
             steps {
                 script {
-                    // Check if version.txt exists
-                    if (!fileExists('version.txt')) {
-                        error("ERROR: version.txt file not found!")
-                    }
-                    
                     // Use a single shell script to handle everything and write final results
                     sh '''
-                        echo "=== Version Management Started ==="
-                        
-                        # Read current version
-                        if ! CURRENT_VERSION=$(cat version.txt 2>/dev/null); then
-                            echo "ERROR: Failed to read version.txt!"
-                            exit 1
-                        fi
-                        
-                        echo "Current version from file: '$CURRENT_VERSION'"
-                        
-                        # Validate version is a number
-                        if ! echo "$CURRENT_VERSION" | grep -qE '^[0-9]+$'; then
-                            echo "ERROR: Invalid version: '$CURRENT_VERSION'"
-                            exit 1
-                        fi
-                        
-                        # Calculate new version
-                        NEW_VERSION=$((CURRENT_VERSION + 1))
-                        IMAGE_TAG="v$NEW_VERSION"
-                        
-                        echo "New version calculated: $NEW_VERSION"
-                        echo "Image tag: $IMAGE_TAG"
-                        
-                        # Write new version to file
-                        if ! echo "$NEW_VERSION" > version.txt; then
-                            echo "ERROR: Failed to write to version.txt!"
-                            exit 1
-                        fi
-                        
-                        # Verify write
-                        WRITTEN_VERSION=$(cat version.txt)
-                        if [ "$WRITTEN_VERSION" != "$NEW_VERSION" ]; then
-                            echo "ERROR: Write verification failed!"
-                            exit 1
-                        fi
-                        
-                        echo "Successfully updated version.txt"
-                        
-                        # Update values.yaml
-                        if [ -f "terraform/charts/statuspage-chart/values.yaml" ]; then
-                            sed -i "s/tag: \\".*\\"/tag: \\"$IMAGE_TAG\\"/" terraform/charts/statuspage-chart/values.yaml
-                            echo "Updated values.yaml with tag: $IMAGE_TAG"
-                        fi
-                        
-                        # Write variables to files for other stages to read
-                        echo "$NEW_VERSION" > .jenkins_version
-                        echo "$IMAGE_TAG" > .jenkins_tag
-                        
-                        echo "=== Version Management Completed ==="
-                        echo "Version: $NEW_VERSION"
-                        echo "Tag: $IMAGE_TAG"
-                    '''
+    			echo "=== Version Management Started ==="
+
+    			# Get latest tag from ECR
+    			LATEST_TAG=$(aws ecr describe-images \
+      			--repository-name ${ECR_REPOSITORY} \
+      			--query 'sort_by(imageDetails,& imagePushedAt)[-1].imageTags[0]' \
+      			--output text 2>/dev/null || echo "v0")
+
+    			if [[ "$LATEST_TAG" =~ ^v[0-9]+$ ]]; then
+        			CURRENT_VERSION=${LATEST_TAG#v}
+    			else
+        			CURRENT_VERSION=0
+    			fi
+
+    			NEW_VERSION=$((CURRENT_VERSION + 1))
+    			IMAGE_TAG="v$NEW_VERSION"
+
+    			echo "Latest tag in ECR: $LATEST_TAG"
+    			echo "New version: $NEW_VERSION"
+    			echo "Image tag: $IMAGE_TAG"
+
+    			# Update values.yaml
+    			if [ -f "terraform/charts/statuspage-chart/values.yaml" ]; then
+        		sed -i "s/tag: \\".*\\"/tag: \\"$IMAGE_TAG\\"/" terraform/charts/statuspage-chart/values.yaml
+        		echo "Updated values.yaml with tag: $IMAGE_TAG"
+    			fi
+
+    			# Save for next stages
+    			echo "$NEW_VERSION" > .jenkins_version
+    			echo "$IMAGE_TAG" > .jenkins_tag
+
+    			echo "=== Version Management Completed ==="
+		    '''
+
                 }
             }
         }
