@@ -82,3 +82,15 @@ variable "key_pair_name" {
   type        = string
   default     = "yuvalyhome"
 }
+
+variable "ssl_email" {
+  description = "Email address for Let's Encrypt certificate registration"
+  type        = string
+  default     = "yuviyi1408@gmail.com"  # החליפי למייל שלך
+}
+
+variable "domain_name" {
+  description = "Domain name for the StatusPage application"
+  type        = string
+  default     = "34.225.241.216.nip.io"  # החליפי לדומיין שלך
+}

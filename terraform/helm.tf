@@ -259,7 +259,7 @@ metadata:
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
-    email: yuviyi1408@gmail.com
+    email: ${var.ssl_email}
     privateKeySecretRef:
       name: letsencrypt-prod
     solvers:
@@ -500,7 +500,6 @@ YAML
   depends_on = [helm_release.nginx_ingress, helm_release.monitoring]
 }
 
-# Ingress לStatusPage
 resource "kubectl_manifest" "statuspage_ingress" {
   yaml_body = <<YAML
 apiVersion: networking.k8s.io/v1
@@ -509,14 +508,20 @@ metadata:
   name: statuspage-ingress
   namespace: default
   annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
 spec:
   ingressClassName: nginx
+  tls:
+  - hosts:
+    - ${var.domain_name}
+    secretName: statuspage-tls
   rules:
-  - http:
+  - host: ${var.domain_name}
+    http:
       paths:
-      - path: /statuspage
+      - path: /
         pathType: Prefix
         backend:
           service:
