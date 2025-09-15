@@ -1,27 +1,33 @@
+data "aws_eks_cluster" "cluster" {
+  name = "ly-statuspage-cluster"
+}
+
 data "aws_eks_cluster_auth" "cluster" {
-  name = aws_eks_cluster.ly_eks.name
+  name = "ly-statuspage-cluster"
 }
 
 provider "helm" {
   kubernetes = {
-    host                   = aws_eks_cluster.ly_eks.endpoint
-    cluster_ca_certificate = base64decode(aws_eks_cluster.ly_eks.certificate_authority[0].data)
+    host                   = data.aws_eks_cluster.cluster.endpoint
+    cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
     token                  = data.aws_eks_cluster_auth.cluster.token
   }
 }
 
+
 provider "kubectl" {
-  host                   = aws_eks_cluster.ly_eks.endpoint
-  cluster_ca_certificate = base64decode(aws_eks_cluster.ly_eks.certificate_authority[0].data)
+  host                   = data.aws_eks_cluster.cluster.endpoint
+  cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
   token                  = data.aws_eks_cluster_auth.cluster.token
   load_config_file       = false
 }
 
 provider "kubernetes" {
-  host                   = aws_eks_cluster.ly_eks.endpoint
-  cluster_ca_certificate = base64decode(aws_eks_cluster.ly_eks.certificate_authority[0].data)
+  host                   = data.aws_eks_cluster.cluster.endpoint
+  cluster_ca_certificate = base64decode(data.aws_eks_cluster.cluster.certificate_authority[0].data)
   token                  = data.aws_eks_cluster_auth.cluster.token
 }
+
 
 # Get node group IAM role for secrets manager permissions
 data "aws_iam_role" "nodegroup_role" {
@@ -83,6 +89,10 @@ resource "aws_iam_role" "grafana_irsa" {
       }
     }]
   })
+
+  tags = {
+    owner = "ly"
+  }
 }
 
 data "aws_secretsmanager_secret" "grafana_admin_password" {
@@ -135,6 +145,8 @@ kind: SecretProviderClass
 metadata:
   name: db-secrets
   namespace: default
+  labels:
+    owner: ly
 spec:
   provider: aws
   parameters:
@@ -216,7 +228,7 @@ resource "helm_release" "cert_manager" {
 
 # התקנת ArgoCD
 resource "helm_release" "argocd" {
-  count      = 0
+  count      = 1
   name       = "argocd"
   repository = "https://argoproj.github.io/argo-helm"
   chart      = "argo-cd"
@@ -256,6 +268,8 @@ apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
   name: letsencrypt-prod
+  labels:
+    owner: ly
 spec:
   acme:
     server: https://acme-v02.api.letsencrypt.org/directory
@@ -297,13 +311,6 @@ resource "helm_release" "aws_ebs_csi_driver" {
   namespace  = "kube-system"
 
   depends_on = [aws_eks_node_group.ly_nodes]
-}
-
-# יצירת SecretProviderClass לGrafana
-resource "kubectl_manifest" "grafana_secrets_provider" {
-  count = 0
-  yaml_body = file("${path.module}/charts/statuspage-chart/templates/SecretProviderClass-grafana.yaml")
-  depends_on = [helm_release.csi_driver_provider_aws]
 }
 
 resource "helm_release" "monitoring" {
@@ -423,6 +430,8 @@ kind: Application
 metadata:
   name: statuspage
   namespace: argocd
+  labels:
+    owner: ly
 spec:
   project: default
   source:
@@ -442,7 +451,7 @@ YAML
 
   depends_on = [helm_release.argocd]
 
-  count = 0
+  count = 1
 }
 
 # Ingress לPrometheus
@@ -453,6 +462,8 @@ kind: Ingress
 metadata:
   name: prometheus-ingress
   namespace: monitoring
+  labels:
+    owner: ly
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/use-regex: "true"
@@ -481,6 +492,8 @@ kind: Ingress
 metadata:
   name: grafana-ingress
   namespace: monitoring
+  labels:
+    owner: ly
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
@@ -507,6 +520,8 @@ kind: Ingress
 metadata:
   name: statuspage-ingress
   namespace: default
+  labels:
+    owner: ly
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "true"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
