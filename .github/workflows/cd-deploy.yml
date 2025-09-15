@@ -1,10 +1,10 @@
-name: Build and Deploy StatusPage
+name: CD - Deploy to Production
 
 on:
   push:
     branches: [ main ]
     paths:
-      - 'status-page/**'  # רק אם משתנה הקוד
+      - 'status-page/**'
 
 env:
   ECR_REGISTRY: 992382545251.dkr.ecr.us-east-1.amazonaws.com
@@ -12,7 +12,7 @@ env:
   AWS_REGION: us-east-1
 
 jobs:
-  build-and-deploy:
+  deploy:
     runs-on: ubuntu-latest
     
     steps:
@@ -52,22 +52,43 @@ jobs:
         
         echo "latest-tag=$LATEST_TAG" >> $GITHUB_OUTPUT
         echo "new-tag=$NEW_TAG" >> $GITHUB_OUTPUT
-        echo "Latest: $LATEST_TAG, New: $NEW_TAG"
+        echo "🏷️  Latest: $LATEST_TAG, New: $NEW_TAG"
 
     - name: Build and push Docker image
       run: |
+        echo "🔨 Building Docker image..."
         docker build -f status-page/Dockerfile -t statuspage-app:${{ steps.get-tag.outputs.new-tag }} ./status-page/
         docker tag statuspage-app:${{ steps.get-tag.outputs.new-tag }} $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.get-tag.outputs.new-tag }}
+        
+        echo "🚀 Pushing to ECR..."
         docker push $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.get-tag.outputs.new-tag }}
+        echo "✅ Image pushed: ${{ steps.get-tag.outputs.new-tag }}"
 
     - name: Update values.yaml
       run: |
+        echo "📝 Updating values.yaml with new tag..."
         sed -i 's/tag: ".*"/tag: "${{ steps.get-tag.outputs.new-tag }}"/' terraform/charts/statuspage-chart/values.yaml
+        
+        echo "Updated values.yaml:"
+        grep -A 2 -B 2 "tag:" terraform/charts/statuspage-chart/values.yaml
         
     - name: Commit and push changes
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         git add terraform/charts/statuspage-chart/values.yaml
-        git commit -m "Update image tag to ${{ steps.get-tag.outputs.new-tag }}" || exit 0
-        git push
+        
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "🚀 Deploy: Update image tag to ${{ steps.get-tag.outputs.new-tag }}"
+          git push
+          echo "✅ Changes pushed to repository"
+        fi
+
+    - name: Deployment summary
+      run: |
+        echo "🎉 Deployment completed!"
+        echo "📦 Image: $ECR_REGISTRY/$ECR_REPOSITORY:${{ steps.get-tag.outputs.new-tag }}"
+        echo "🔄 ArgoCD will sync automatically within 3 minutes"
+        echo "🌐 Check your application status in ArgoCD UI"
