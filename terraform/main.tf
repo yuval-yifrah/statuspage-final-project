@@ -26,6 +26,7 @@ provider "aws" {
       Environment = var.environment
       ManagedBy   = "terraform"
       Prefix      = var.prefix
+      owner       = "ly"
     }
   }
 }

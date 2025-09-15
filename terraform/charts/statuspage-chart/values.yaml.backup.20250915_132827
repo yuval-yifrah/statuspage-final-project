@@ -1,13 +1,9 @@
 replicaCount: 2
 
-metadata:
-  annotations:
-    argocd.argoproj.io/sync-wave: "1"
-
 image:
   repository: 992382545251.dkr.ecr.us-east-1.amazonaws.com/ly-statuspage-repo
   pullPolicy: Always
-  tag: "v1"
+  tag: "v21"
 
 service:
   type: LoadBalancer
@@ -41,11 +37,11 @@ serviceAccount:
 
 resources:
   requests:
-    memory: "1.5Gi"  # הקטן מ-1Gi
-    cpu: "350m"      # הקטן מ-500m
+    memory: "512Mi"  # הקטן מ-1Gi
+    cpu: "250m"      # הקטן מ-500m
   limits:
-    memory: "2.5Gi"    # הקטן מ-3Gi  
-    cpu: "750m"      # הקטן מ-1000m
+    memory: "1Gi"    # הקטן מ-3Gi  
+    cpu: "500m"      # הקטן מ-1000m
 
 autoscaling:
   enabled: true
