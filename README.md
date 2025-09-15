@@ -34,3 +34,4 @@ kubectl get secrets
 helm upgrade --install statuspage ./helm -n <namespace>
 
 check1
+check2
