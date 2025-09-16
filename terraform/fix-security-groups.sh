@@ -73,7 +73,7 @@ VALUES_FILE="charts/statuspage-chart/values.yaml"
 
 if [ -f "$VALUES_FILE" ]; then
     # Backup original file
-    cp "$VALUES_FILE" "$VALUES_FILE.backup.$(date +%Y%m%d_%H%M%S)"
+    # cp "$VALUES_FILE" "$VALUES_FILE.backup.$(date +%Y%m%d_%H%M%S)"
     
     # Get current Redis host in values.yaml
     CURRENT_REDIS_HOST=$(grep -A 1 "redis:" "$VALUES_FILE" | grep "host:" | awk '{print $2}' || grep "REDIS_HOST" "$VALUES_FILE" | awk '{print $2}')
