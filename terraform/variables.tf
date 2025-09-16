@@ -92,5 +92,5 @@ variable "ssl_email" {
 variable "domain_name" {
   description = "Domain name for the StatusPage application"
   type        = string
-  default     = "34.225.241.216.nip.io"  # החליפי לדומיין שלך
+  default     = "ly-statuspage.duckdns.org" 
 }

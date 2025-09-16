@@ -285,22 +285,64 @@ YAML
   depends_on = [helm_release.cert_manager]
 }
 
-# התקנת StatusPage
-resource "helm_release" "statuspage" {
-  name       = "statuspage"
-  chart      = "${path.module}/charts/statuspage-chart"
-  namespace  = "default"
-  create_namespace = true
 
+resource "null_resource" "fix_sg" {
   depends_on = [
+    aws_eks_cluster.ly_eks,
     aws_eks_node_group.ly_nodes,
+    aws_elasticache_replication_group.ly_redis,
+    aws_db_instance.ly_rds,
+    helm_release.csi_driver_provider_aws,
     kubectl_manifest.db_secrets_provider,
   ]
-
-  values = [
-    file("${path.module}/charts/statuspage-chart/values.yaml")
-  ]
+  
+  triggers = {
+    script_hash = filemd5("${path.module}/fix-security-groups.sh")
+    cluster_id = aws_eks_cluster.ly_eks.id
+    rds_endpoint = aws_db_instance.ly_rds.endpoint
+    redis_endpoint = aws_elasticache_replication_group.ly_redis.primary_endpoint_address
+    # גורם לו לרוץ בכל terraform apply
+    always_run = timestamp()
+  }
+  
+  provisioner "local-exec" {
+    command = <<-EOT
+      echo "Waiting for all AWS resources to be ready..."
+      aws eks wait cluster-active --name ly-statuspage-cluster --region ${var.aws_region}
+      
+      echo "Updating kubeconfig..."
+      aws eks update-kubeconfig --name ly-statuspage-cluster --region ${var.aws_region}
+      
+      echo "Waiting for RDS and Redis to be fully available..."
+      sleep 60
+      
+      echo "Running comprehensive security groups fix..."
+      bash ${path.module}/fix-security-groups.sh
+      
+      echo "Security fix completed. StatusPage deployment can now proceed safely."
+    EOT
+    
+    working_dir = path.module
+  }
 }
+
+# התקנת StatusPage
+# resource "helm_release" "statuspage" {
+#   name       = "statuspage"
+#   chart      = "${path.module}/charts/statuspage-chart"
+#   namespace  = "default"
+#   create_namespace = true
+#  
+#   depends_on = [
+#    null_resource.fix_sg,
+#    kubectl_manifest.db_secrets_provider,
+#    helm_release.csi_driver_provider_aws,
+#   ]
+#  
+#   values = [
+#     file("${path.module}/charts/statuspage-chart/values.yaml")
+#   ]
+# }
 
 # התקנת AWS EBS CSI Driver (נדרש ל-Prometheus/Alertmanager PVC)
 resource "helm_release" "aws_ebs_csi_driver" {
@@ -512,36 +554,36 @@ YAML
   depends_on = [helm_release.nginx_ingress, helm_release.monitoring]
 }
 
-resource "kubectl_manifest" "statuspage_ingress" {
-  yaml_body = <<YAML
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: statuspage-ingress
-  namespace: default
-  labels:
-    owner: ly
-  annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "true"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
-    cert-manager.io/cluster-issuer: "letsencrypt-prod"
-spec:
-  ingressClassName: nginx
-  tls:
-  - hosts:
-    - ${var.domain_name}
-    secretName: statuspage-tls
-  rules:
-  - host: ${var.domain_name}
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: statuspage-statuspage-chart
-            port:
-              number: 80
-YAML
-  depends_on = [helm_release.nginx_ingress, helm_release.statuspage]
-}
+#resource "kubectl_manifest" "statuspage_ingress" {
+#  yaml_body = <<YAML
+#apiVersion: networking.k8s.io/v1
+#kind: Ingress
+#metadata:
+#  name: statuspage-ingress
+#  namespace: default
+#  labels:
+#    owner: ly
+#  annotations:
+#    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+#    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+#    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+#spec:
+#  ingressClassName: nginx
+#  tls:
+#  - hosts:
+#    - ${var.domain_name}
+#    secretName: statuspage-tls
+#  rules:
+#  - host: ${var.domain_name}
+#    http:
+#      paths:
+#      - path: /
+#        pathType: Prefix
+#        backend:
+#          service:
+#            name: statuspage-statuspage-chart
+#            port:
+#              number: 80
+#YAML
+#  depends_on = [helm_release.nginx_ingress, helm_release.statuspage]
+#}
