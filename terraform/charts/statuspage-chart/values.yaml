@@ -21,7 +21,7 @@ service:
     service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
 
 ingress:
-  enabled: true
+  enabled: false
   host: ly-statuspage.click
 
 django:
