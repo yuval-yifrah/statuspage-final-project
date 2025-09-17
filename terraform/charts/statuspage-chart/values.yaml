@@ -39,6 +39,7 @@ django:
     cachingDatabase: 1
   env:
     SITE_URL: "https://ly-statuspage.click"
+    CSRF_TRUSTED_ORIGINS: "https://ly-statuspage.click,https://a53633fbafb76443d8806e929adf3f29-b13515d9f61dc082.elb.us-east-1.amazonaws.com"
 
 serviceAccount:
   create: true
