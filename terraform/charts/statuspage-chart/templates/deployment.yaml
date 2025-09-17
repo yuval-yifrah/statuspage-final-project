@@ -65,6 +65,18 @@ spec:
               value: "{{ .Values.django.env.CSRF_TRUSTED_ORIGINS }}"
             - name: SITE_URL  
               value: "{{ .Values.django.env.SITE_URL }}"
+            - name: SECURE_SSL_REDIRECT
+              value: "{{ .Values.django.env.SECURE_SSL_REDIRECT }}"
+            - name: SECURE_PROXY_SSL_HEADER
+              value: "{{ .Values.django.env.SECURE_PROXY_SSL_HEADER }}"
+            - name: SECURE_HSTS_SECONDS
+              value: "{{ .Values.django.env.SECURE_HSTS_SECONDS }}"
+            - name: SECURE_CONTENT_TYPE_NOSNIFF
+              value: "{{ .Values.django.env.SECURE_CONTENT_TYPE_NOSNIFF }}"
+            - name: SECURE_BROWSER_XSS_FILTER
+              value: "{{ .Values.django.env.SECURE_BROWSER_XSS_FILTER }}"
+            - name: USE_TZ
+              value: "{{ .Values.django.env.USE_TZ }}"
             - name: SECRET_KEY
               value: "{{ .Values.django.secretKey | default "change-me-in-production" }}"
           volumeMounts:
