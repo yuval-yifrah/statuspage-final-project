@@ -61,8 +61,10 @@ spec:
               value: "{{ .Values.django.redis.port }}"
             - name: REDIS_DB
               value: "{{ .Values.django.redis.database }}"
-            - name: SITE_URL
-              value: "{{ .Values.siteUrl | default "http://localhost:8000" }}"
+            - name: CSRF_TRUSTED_ORIGINS
+              value: "{{ .Values.django.env.CSRF_TRUSTED_ORIGINS }}"
+            - name: SITE_URL  
+              value: "{{ .Values.django.env.SITE_URL }}"
             - name: SECRET_KEY
               value: "{{ .Values.django.secretKey | default "change-me-in-production" }}"
           volumeMounts:
