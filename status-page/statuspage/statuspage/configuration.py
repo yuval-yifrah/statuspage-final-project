@@ -37,7 +37,7 @@ REDIS = {
 }
 
 # Define the URL which will be used e.g. in E-Mails
-SITE_URL = os.environ.get('SITE_URL', 'https://ly-statuspage.duckdns.org')
+SITE_URL = os.environ.get('SITE_URL', 'https://ly-statuspage.click')
 
 # Generate or use provided secret key
 SECRET_KEY = os.environ.get('SECRET_KEY')

@@ -66,10 +66,10 @@ output "redis_endpoint" {
   sensitive   = true
 }
 
-output "nginx_ingress_ip" {
-  description = "NGINX Ingress Controller LoadBalancer IP"
-  value       = "Get from: kubectl get svc -n ingress-nginx"
-}
+# output "nginx_ingress_ip" {
+#   description = "NGINX Ingress Controller LoadBalancer IP"
+#   value       = "Get from: kubectl get svc -n ingress-nginx"
+# }
 
 output "argocd_server_ip" {
   description = "ArgoCD Server LoadBalancer IP"
@@ -91,3 +91,6 @@ output "db_name" {
   value       = aws_db_instance.ly_rds.db_name
 }
 
+output "statuspage_cert_arn" {
+  value = aws_acm_certificate.statuspage_cert.arn
+}

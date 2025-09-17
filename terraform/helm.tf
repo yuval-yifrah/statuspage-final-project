@@ -172,43 +172,43 @@ YAML
 }
 
 # התקנת NGINX Ingress Controller
-resource "helm_release" "nginx_ingress" {
-  name       = "nginx-ingress"
-  repository = "https://kubernetes.github.io/ingress-nginx"
-  chart      = "ingress-nginx"
-  namespace  = "ingress-nginx"
-  create_namespace = true
-
-  set = [
-    {
-      name  = "controller.service.type"
-      value = "LoadBalancer"
-    },
-    {
-      name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-name"
-      value = "${var.prefix}nginx-alb"
-    },
-    {
-      name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-type"
-      value = "nlb-ip"
-    },
-    {
-      name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-scheme"
-      value = "internet-facing"
-    },
-    {
-      name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-backend-protocol"
-      value = "http"
-    },
-    {
-      name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-cross-zone-load-balancing-enabled"
-      value = "true"
-    }
-  ]
-
-  depends_on = [aws_eks_node_group.ly_nodes]
-}
-
+# resource "helm_release" "nginx_ingress" {
+#   name       = "nginx-ingress"
+#   repository = "https://kubernetes.github.io/ingress-nginx"
+#  chart      = "ingress-nginx"
+#  namespace  = "ingress-nginx"
+#  create_namespace = true
+#
+#  set = [
+#    {
+#      name  = "controller.service.type"
+#      value = "LoadBalancer"
+#    },
+#    {
+#      name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-name"
+#      value = "${var.prefix}nginx-alb"
+#    },
+#    {
+#      name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-type"
+#      value = "nlb-ip"
+#    },
+#    {
+#      name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-scheme"
+#      value = "internet-facing"
+#    },
+#    {
+#      name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-backend-protocol"
+#      value = "http"
+#    },
+#    {
+#      name  = "controller.service.annotations.service\\.beta\\.kubernetes\\.io/aws-load-balancer-cross-zone-load-balancing-enabled"
+#      value = "true"
+#    }
+#  ]
+#
+#  depends_on = [aws_eks_node_group.ly_nodes]
+#}
+#
 # התקנת cert-manager לניהול SSL certificates
 resource "helm_release" "cert_manager" {
   name       = "cert-manager"
@@ -223,7 +223,7 @@ resource "helm_release" "cert_manager" {
     value = "true"
   }]
 
-  depends_on = [helm_release.nginx_ingress]
+  depends_on = [aws_eks_node_group.ly_nodes]
 }
 
 # התקנת ArgoCD
@@ -496,63 +496,63 @@ YAML
 }
 
 # Ingress לPrometheus
-resource "kubectl_manifest" "prometheus_ingress" {
-  yaml_body = <<YAML
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: prometheus-ingress
-  namespace: monitoring
-  labels:
-    owner: ly
-  annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-spec:
-  ingressClassName: nginx
-  rules:
-  - http:
-      paths:
-      - path: /prometheus(/|$)(.*)
-        pathType: ImplementationSpecific
-        backend:
-          service:
-            name: monitoring-kube-prometheus-prometheus
-            port:
-              number: 9090
-YAML
-  depends_on = [helm_release.nginx_ingress, helm_release.monitoring]
-}
+# resource "kubectl_manifest" "prometheus_ingress" {
+#   yaml_body = <<YAML
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: prometheus-ingress
+#   namespace: monitoring
+#   labels:
+#     owner: ly
+#   annotations:
+#     nginx.ingress.kubernetes.io/ssl-redirect: "false"
+#     nginx.ingress.kubernetes.io/use-regex: "true"
+#     nginx.ingress.kubernetes.io/rewrite-target: /$2
+# spec:
+#   ingressClassName: nginx
+#   rules:
+#   - http:
+#       paths:
+#       - path: /prometheus(/|$)(.*)
+#         pathType: ImplementationSpecific
+#         backend:
+#           service:
+#             name: monitoring-kube-prometheus-prometheus
+#             port:
+#               number: 9090
+# YAML
+#   depends_on = [helm_release.nginx_ingress, helm_release.monitoring]
+# }
 
 # Ingress לGrafana
-resource "kubectl_manifest" "grafana_ingress" {
-  yaml_body = <<YAML
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: grafana-ingress
-  namespace: monitoring
-  labels:
-    owner: ly
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-spec:
-  ingressClassName: nginx
-  rules:
-  - http:
-      paths:
-      - path: /grafana
-        pathType: Prefix
-        backend:
-          service:
-            name: monitoring-grafana
-            port:
-              number: 80
-YAML
-  depends_on = [helm_release.nginx_ingress, helm_release.monitoring]
-}
+# resource "kubectl_manifest" "grafana_ingress" {
+#   yaml_body = <<YAML
+# apiVersion: networking.k8s.io/v1
+# kind: Ingress
+# metadata:
+#   name: grafana-ingress
+#   namespace: monitoring
+#   labels:
+#     owner: ly
+#   annotations:
+#     nginx.ingress.kubernetes.io/rewrite-target: /
+#     nginx.ingress.kubernetes.io/ssl-redirect: "false"
+# spec:
+#   ingressClassName: nginx
+#   rules:
+#   - http:
+#       paths:
+#       - path: /grafana
+#         pathType: Prefix
+#         backend:
+#           service:
+#             name: monitoring-grafana
+#             port:
+#               number: 80
+# YAML
+#   depends_on = [helm_release.nginx_ingress, helm_release.monitoring]
+# }
 
 #resource "kubectl_manifest" "statuspage_ingress" {
 #  yaml_body = <<YAML

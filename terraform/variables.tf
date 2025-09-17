@@ -92,5 +92,5 @@ variable "ssl_email" {
 variable "domain_name" {
   description = "Domain name for the StatusPage application"
   type        = string
-  default     = "ly-statuspage.duckdns.org" 
+  default     = "ly-statuspage.click" 
 }
