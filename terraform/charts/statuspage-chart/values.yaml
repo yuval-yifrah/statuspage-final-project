@@ -13,10 +13,16 @@ service:
   type: LoadBalancer
   port: 80
   targetPort: 8000
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-scheme: "internet-facing"
+    service.beta.kubernetes.io/aws-load-balancer-ssl-cert: "arn:aws:acm:us-east-1:992382545251:certificate/3ad26a05-3441-4914-9589-5e638012949c"
+    service.beta.kubernetes.io/aws-load-balancer-ssl-ports: "443"
+    service.beta.kubernetes.io/aws-load-balancer-backend-protocol: "http"
 
 ingress:
   enabled: true
-  host: ly-statuspage.duckdns.org
+  host: ly-statuspage.click
 
 django:
   debug: false
@@ -32,7 +38,7 @@ django:
     database: 0
     cachingDatabase: 1
   env:
-    SITE_URL: "https://ly-statuspage.duckdns.org"
+    SITE_URL: "https://ly-statuspage.click"
 
 serviceAccount:
   create: true

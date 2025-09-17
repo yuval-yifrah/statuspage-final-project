@@ -25,6 +25,6 @@ db_allocated_storage = 20
 
 # SSL Configuration
 ssl_email = "yuviyi1408@gmail.com"
-domain_name = "ly-statuspage.duckdns.org"
+domain_name = "ly-statuspage.click"
 
 
