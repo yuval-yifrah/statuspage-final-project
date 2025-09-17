@@ -7,7 +7,7 @@ metadata:
 image:
   repository: 992382545251.dkr.ecr.us-east-1.amazonaws.com/ly-statuspage-repo
   pullPolicy: Always
-  tag: "v4"
+  tag: "v5"
 
 service:
   type: LoadBalancer
