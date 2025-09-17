@@ -38,7 +38,7 @@ spec:
             - name: ALLOWED_HOSTS
               value: "{{ .Values.django.allowedHosts }}"
             - name: DEBUG
-              value: "true"
+              value: "false"
             - name: DATABASE_HOST
               value: "{{ .Values.django.database.host }}"
             - name: DATABASE_NAME
