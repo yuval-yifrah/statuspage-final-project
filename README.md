@@ -256,10 +256,7 @@ terraform output eks_cluster_endpoint
 # 6. Update kubectl configuration
 aws eks update-kubeconfig --name ly-statuspage-cluster --region us-east-1
 
-# 7. Run security groups fix (important!)
-bash fix-security-groups.sh
-
-# 8. Verify deployment
+# 7. Verify deployment
 kubectl get pods -A
 kubectl get svc -A
 ```
@@ -296,58 +293,6 @@ terraform {
 - **EKS Cluster creation**: ~10-12 minutes
 - **RDS creation**: ~5-7 minutes
 - **Helm applications**: ~3-5 minutes
-
-## Configuration
-
-### Key Variables (terraform/variables.tf)
-
-```hcl
-aws_region = "us-east-1"
-domain_name = "ly-statuspage.click"
-node_instance_type = "t3.medium"
-node_desired_size = 3
-node_max_size = 4
-node_min_size = 2
-cluster_version = "1.28"
-prefix = "ly-"
-```
-
-### Environment Variables (values.yaml)
-
-```yaml
-django:
-  database:
-    host: ly-statuspage-rds.cx248m4we6k7.us-east-1.rds.amazonaws.com
-    name: statuspage
-    port: 5432
-  redis:
-    host: ly-statuspage-redis.7fftml.ng.0001.use1.cache.amazonaws.com
-    port: 6379
-  env:
-    SITE_URL: "https://ly-statuspage.click"
-    CSRF_TRUSTED_ORIGINS: "https://ly-statuspage.click,https://a53633fbafb76443d8806e929adf3f29-b13515d9f61dc082.elb.us-east-1.amazonaws.com"
-    SECURE_SSL_REDIRECT: "true"
-    DEBUG: "false"
-```
-
-### Resource Configuration
-
-```yaml
-resources:
-  requests:
-    memory: "1.5Gi"
-    cpu: "350m"
-  limits:
-    memory: "2.5Gi"
-    cpu: "750m"
-
-autoscaling:
-  enabled: true
-  minReplicas: 2
-  maxReplicas: 10
-  targetCPUUtilizationPercentage: 70
-  targetMemoryUtilizationPercentage: 80
-```
 
 ## Installation
 
@@ -404,14 +349,7 @@ terraform apply
 aws eks update-kubeconfig --name ly-statuspage-cluster --region us-east-1
 ```
 
-### 6. Fix Security Groups (Important!)
-
-```bash
-# Run the automated security groups fix
-bash fix-security-groups.sh
-```
-
-### 7. Verify Deployment
+### 6. Verify Deployment
 
 ```bash
 # Check all pods are running
