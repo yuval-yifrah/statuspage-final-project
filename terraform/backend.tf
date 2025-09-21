@@ -1,8 +1,8 @@
 terraform {
   backend "s3" {
-    bucket         = "lyterraformstate"   # השם של הבאקט שפתחת ידנית
-    key            = "terraform.tfstate" # מיקום הקובץ בתוך הבאקט
-    region         = "us-east-1"            # האזור של הבאקט
+    bucket         = "lyterraformstate"   # change to your bucket name
+    key            = "terraform.tfstate" # location of the file in the bucket
+    region         = "us-east-1"            # region
   }
 }
 

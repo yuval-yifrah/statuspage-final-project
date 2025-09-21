@@ -40,7 +40,7 @@ data "aws_caller_identity" "current" {}
 
 # Secrets Manager - DB credentials
 data "aws_secretsmanager_secret" "db_credentials" {
-  name = "ly-statuspage-db-credentials"
+  name = "${var.prefix}statuspage-db-credentials"
 }
 
 data "aws_secretsmanager_secret_version" "db_credentials_version" {

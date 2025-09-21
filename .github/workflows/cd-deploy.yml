@@ -11,8 +11,8 @@ permissions:
   pull-requests: read
 
 env:
-  ECR_REGISTRY: 992382545251.dkr.ecr.us-east-1.amazonaws.com
-  ECR_REPOSITORY: ly-statuspage-repo
+  ECR_REGISTRY: YOUR_ACCOUNT_ID.dkr.ecr.us-east-1.amazonaws.com
+  ECR_REPOSITORY: your-prefix-statuspage-repo  
   AWS_REGION: us-east-1
 
 jobs:
