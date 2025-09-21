@@ -80,17 +80,17 @@ variable "db_name" {
 variable "key_pair_name" {
   description = "Name of the EC2 Key Pair for Jenkins instance"
   type        = string
-  default     = "yuvalyhome"
+  default     = "your-key" # change to your key
 }
 
 variable "ssl_email" {
   description = "Email address for Let's Encrypt certificate registration"
   type        = string
-  default     = "yuviyi1408@gmail.com"  # החליפי למייל שלך
+  default     = "example@example.com"   # change to your mail
 }
 
 variable "domain_name" {
   description = "Domain name for the StatusPage application"
   type        = string
-  default     = "ly-statuspage.click" 
+  default     = "your-domain" # change to your domain
 }

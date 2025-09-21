@@ -1,5 +1,29 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
 .terraform/
 .terraform.lock.hcl
-*.tfstate
-*.tfstate.backup
-my-secrets.yaml
+terraform.tfstate.d/
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# AWS credentials
+.aws/
+aws-credentials.json
+
+# IDE
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+venv/
+env/
+
+# Logs
+*.log

@@ -1,9 +1,14 @@
 #!/bin/bash
 echo "🔧 Advanced Auto-fixing Security Groups and Values for StatusPage connectivity..."
 
-# Get EKS cluster name and region
-CLUSTER_NAME="ly-statuspage-cluster"
-REGION="us-east-1"
+# Read configuration from terraform variables
+PREFIX=$(terraform output -raw prefix 2>/dev/null || echo "your-prefix-")
+PROJECT_NAME=$(terraform output -raw project_name 2>/dev/null || echo "statuspage")
+AWS_REGION=$(terraform output -raw aws_region 2>/dev/null || echo "us-east-1")
+
+# Use the variables
+CLUSTER_NAME="${PREFIX}${PROJECT_NAME}-cluster"
+REGION="${AWS_REGION}"
 
 echo "📡 Auto-detecting Security Groups..."
 

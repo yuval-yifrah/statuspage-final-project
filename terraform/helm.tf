@@ -1,9 +1,9 @@
 data "aws_eks_cluster" "cluster" {
-  name = "ly-statuspage-cluster"
+  name = aws_eks_cluster.ly_eks.name
 }
 
 data "aws_eks_cluster_auth" "cluster" {
-  name = "ly-statuspage-cluster"
+  name = aws_eks_cluster.ly_eks.name
 }
 
 provider "helm" {
@@ -31,7 +31,7 @@ provider "kubernetes" {
 
 # Get node group IAM role for secrets manager permissions
 data "aws_iam_role" "nodegroup_role" {
-  name = "ly-statuspage-eks-nodegroup-role"
+  name = aws_iam_role.eks_nodegroup_role.name
 }
 
 resource "aws_iam_role_policy_attachment" "node_secrets_manager_policy" {
@@ -96,7 +96,7 @@ resource "aws_iam_role" "grafana_irsa" {
 }
 
 data "aws_secretsmanager_secret" "grafana_admin_password" {
-  name = "ly-grafana-admin-password"
+  name = "${var.prefix}grafana-admin-password"
 }
 
 resource "aws_iam_role_policy" "grafana_sm_read" {
@@ -111,7 +111,6 @@ resource "aws_iam_role_policy" "grafana_sm_read" {
   })
 }
 
-# התקנת CSI Driver לניהול Secrets
 resource "helm_release" "csi_driver" {
   name       = "csi-secrets-store"
   repository = "https://kubernetes-sigs.github.io/secrets-store-csi-driver/charts"
@@ -126,7 +125,6 @@ resource "helm_release" "csi_driver" {
   depends_on = [aws_eks_node_group.ly_nodes]
 }
 
-# התקנת AWS Provider ל-CSI Driver
 resource "helm_release" "csi_driver_provider_aws" {
   name       = "csi-secrets-store-provider-aws"
   repository = "https://aws.github.io/secrets-store-csi-driver-provider-aws"
@@ -137,7 +135,6 @@ resource "helm_release" "csi_driver_provider_aws" {
   depends_on = [helm_release.csi_driver]
 }
 
-# יצירת SecretProviderClass לחיבור AWS Secrets Manager
 resource "kubectl_manifest" "db_secrets_provider" {
   yaml_body = <<YAML
 apiVersion: secrets-store.csi.x-k8s.io/v1
@@ -151,7 +148,7 @@ spec:
   provider: aws
   parameters:
     objects: |
-      - objectName: "ly-statuspage-db-credentials"
+      - objectName: "${var.prefix}statuspage-db-credentials"
         objectType: "secretsmanager"
         jmesPath:
           - path: "username"
@@ -171,7 +168,6 @@ YAML
   depends_on = [helm_release.csi_driver_provider_aws]
 }
 
-# התקנת NGINX Ingress Controller
 # resource "helm_release" "nginx_ingress" {
 #   name       = "nginx-ingress"
 #   repository = "https://kubernetes.github.io/ingress-nginx"
@@ -209,7 +205,6 @@ YAML
 #  depends_on = [aws_eks_node_group.ly_nodes]
 #}
 #
-# התקנת cert-manager לניהול SSL certificates
 resource "helm_release" "cert_manager" {
   name       = "cert-manager"
   repository = "https://charts.jetstack.io"
@@ -226,7 +221,6 @@ resource "helm_release" "cert_manager" {
   depends_on = [aws_eks_node_group.ly_nodes]
 }
 
-# התקנת ArgoCD
 resource "helm_release" "argocd" {
   count      = 1
   name       = "argocd"
@@ -301,17 +295,16 @@ resource "null_resource" "fix_sg" {
     cluster_id = aws_eks_cluster.ly_eks.id
     rds_endpoint = aws_db_instance.ly_rds.endpoint
     redis_endpoint = aws_elasticache_replication_group.ly_redis.primary_endpoint_address
-    # גורם לו לרוץ בכל terraform apply
     always_run = timestamp()
   }
   
   provisioner "local-exec" {
     command = <<-EOT
       echo "Waiting for all AWS resources to be ready..."
-      aws eks wait cluster-active --name ly-statuspage-cluster --region ${var.aws_region}
+      aws eks wait cluster-active --name ${var.prefix}${var.project_name}-cluster --region ${var.aws_region}
       
       echo "Updating kubeconfig..."
-      aws eks update-kubeconfig --name ly-statuspage-cluster --region ${var.aws_region}
+      aws eks update-kubeconfig --name ${var.prefix}${var.project_name}-cluster --region ${var.aws_region}
       
       echo "Waiting for RDS and Redis to be fully available..."
       sleep 60
@@ -326,7 +319,6 @@ resource "null_resource" "fix_sg" {
   }
 }
 
-# התקנת StatusPage
 # resource "helm_release" "statuspage" {
 #   name       = "statuspage"
 #   chart      = "${path.module}/charts/statuspage-chart"
@@ -344,7 +336,6 @@ resource "null_resource" "fix_sg" {
 #   ]
 # }
 
-# התקנת AWS EBS CSI Driver (נדרש ל-Prometheus/Alertmanager PVC)
 resource "helm_release" "aws_ebs_csi_driver" {
   name       = "${var.prefix}-ebs-csi-driver"
   repository = "https://kubernetes-sigs.github.io/aws-ebs-csi-driver"
@@ -463,7 +454,6 @@ resource "helm_release" "monitoring" {
   ]
 }
 
-# ArgoCD Application (אופציונלי)
 resource "kubectl_manifest" "statuspage_argocd_application" {
   yaml_body = <<YAML
 apiVersion: argoproj.io/v1alpha1
@@ -476,7 +466,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/yuval-yifrah/statuspage-final-project.git
+    repoURL: https://github.com/your-github-repo
     targetRevision: HEAD
     path: terraform/charts/statuspage-chart
   destination:
